@@ -11,6 +11,7 @@ data class AccountRecord(
     var name: String,
     val owner: String,
     val main: Boolean,
+    val dvz: Boolean,
 ): BaseRecord(recordId)
 
 @Serializable
@@ -18,5 +19,5 @@ data class CharacterRecord(
     @Transient override val recordId: String? = null,
     var name: String,
     val account: String,
-    var tags: Map<String, String> = mapOf(),
+    var tags: Map<String, String>? = mapOf(),
 ): BaseRecord(recordId)

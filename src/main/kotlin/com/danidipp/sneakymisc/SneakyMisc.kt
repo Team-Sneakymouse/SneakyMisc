@@ -1,7 +1,9 @@
 package com.danidipp.sneakymisc
 
+import com.danidipp.sneakymisc.closeinventory.CloseInventoryModule
 import com.danidipp.sneakymisc.databasesync.DBSyncModule
 import com.danidipp.sneakymisc.dclock.DClockModule
+import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
 import com.danidipp.sneakymisc.inventorygames.InventoryGamesModule
 import com.danidipp.sneakymisc.metaoverlayhelper.MetaOverlayHelper
@@ -16,10 +18,12 @@ class SneakyMisc : JavaPlugin() {
     override fun onEnable() {
         registerModule(ElevatorsModule(logger))
         registerModule(MetaOverlayHelper(logger))
+        registerModule(CloseInventoryModule())
 
         if (Bukkit.getPluginManager().isPluginEnabled("SneakyPocketbase")) {
             registerModule(DBSyncModule(logger))
             registerModule(DClockModule(logger))
+            registerModule(RegistrationModule(logger))
         }
     }
 

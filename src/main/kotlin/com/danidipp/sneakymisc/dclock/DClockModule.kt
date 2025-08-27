@@ -3,6 +3,7 @@ package com.danidipp.sneakymisc.dclock
 import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakypocketbase.*
+import kotlinx.serialization.json.Json
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
@@ -60,6 +61,7 @@ class DClockModule(val logger: Logger): SneakyModule, Listener {
             for (i in 0..9) {
                 if (digitEntities.containsKey(i)) {
                     sender.sendMessage("Digit $i already exists")
+                    continue
                 }
                 val location = locations[i] ?: continue
                 if (!location.chunk.isLoaded) {
@@ -147,7 +149,7 @@ class DClockModule(val logger: Logger): SneakyModule, Listener {
     @EventHandler
     fun onPBUpdate(event: AsyncPocketbaseEvent) {
         if (event.collectionName != "lom2_magicspells") return
-        val record = event.data.parseRecord<MSVariableSync.MagicSpellsRecord>()
+        val record = event.data.parseRecord<MSVariableSync.MagicSpellsRecord>(Json { ignoreUnknownKeys = true })
         if (record.id != DCLOCK_RECORD_ID) return logger.warning("DClockModule: Received record with wrong ID: ${record.recordId}")
 
         targetTimestamp = 1735189200000L + record.value.toDouble().toLong() * 1000

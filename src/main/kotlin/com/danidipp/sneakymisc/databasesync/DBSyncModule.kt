@@ -37,17 +37,16 @@ class DBSyncModule(val logger: Logger) : SneakyModule {
                                 recordId = uuid,
                                 name = player.name,
                                 owner = "",
-                                main = false
+                                main = false,
+                                dvz = false,
                             ).toJson(AccountRecord.serializer()))
                             return@PBRunnable
                         }
                         if (record.name != player.name) {
                             logger.info("Updating account record for ${player.name}")
                             record.name = player.name
-                            pb.pb().records.update<AccountRecord>("lom2_accounts", uuid, record.toJson(AccountRecord.serializer()))
-                        } else {
-                            logger.info("Account record for ${player.name} is up to date")
                         }
+                        pb.pb().records.update<AccountRecord>("lom2_accounts", uuid, record.toJson(AccountRecord.serializer()))
                     })
                 }
             })
@@ -62,15 +61,25 @@ class DBSyncModule(val logger: Logger) : SneakyModule {
                             val pb = SneakyPocketbase.getInstance()
                             val player = event.player
                             val tags = Json.decodeFromString<Map<String, String>>(event.tags)
-                            val record = runCatching { pb.pb().records.getOne<CharacterRecord>("lom2_characters", event.characterUUID) }.getOrNull()
+                            val record = try {
+                                pb.pb().records.getOne<CharacterRecord>("lom2_characters", event.characterUUID)
+                            } catch (e: Exception) {
+                                logger.warning("Failed to fetch character record for ${event.characterName} (${event.characterUUID}): ${e.message}")
+                                null
+                            }
                             if (record == null) {
                                 logger.info("Creating new character record for ${event.characterName}")
-                                pb.pb().records.create<CharacterRecord>("lom2_characters", CharacterRecord(
-                                    recordId = event.characterUUID,
-                                    name = event.characterName,
-                                    account = player.uniqueId.toString(),
-                                    tags = tags
-                                ).toJson(CharacterRecord.serializer()))
+                                try {
+                                    pb.pb().records.create<CharacterRecord>("lom2_characters", CharacterRecord(
+                                        recordId = event.characterUUID,
+                                        name = event.characterName,
+                                        account = player.uniqueId.toString(),
+                                        tags = tags
+                                    ).toJson(CharacterRecord.serializer()))
+                                } catch (e: Exception) {
+                                    logger.severe("Failed to create character record for ${event.characterName}: ${e.message}")
+                                    return@PBRunnable
+                                }
                                 return@PBRunnable
                             }
                             if (record.name != event.characterName || record.tags != tags) {
