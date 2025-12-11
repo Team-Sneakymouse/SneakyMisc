@@ -6,6 +6,7 @@ import com.danidipp.sneakymisc.dclock.DClockModule
 import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
 import com.danidipp.sneakymisc.inventorygames.InventoryGamesModule
+import com.danidipp.sneakymisc.leaderboards.LeaderboardCache
 import com.danidipp.sneakymisc.metaoverlayhelper.MetaOverlayHelper
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
@@ -24,6 +25,14 @@ class SneakyMisc : JavaPlugin() {
             registerModule(DBSyncModule(logger))
             registerModule(DClockModule(logger))
             registerModule(RegistrationModule(logger))
+        } else {
+            logger.warning("SneakyPocketbase not found, skipping DBSync and DClock modules")
+        }
+
+        if (Bukkit.getPluginManager().isPluginEnabled("SneakyCharacterManager") && Bukkit.getPluginManager().isPluginEnabled("MagicSpells")) {
+            registerModule(LeaderboardCache(this))
+        } else {
+            logger.warning("SneakyCharacterManager or MagicSpells not found, skipping Leaderboards module")
         }
     }
 

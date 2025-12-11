@@ -1,6 +1,6 @@
 plugins {
-	kotlin("jvm") version "2.1.0"
-	kotlin("plugin.serialization") version "2.1.0"
+	kotlin("jvm") version "2.2.21"
+	kotlin("plugin.serialization") version "2.2.21"
 }
 
 repositories {
@@ -18,12 +18,15 @@ repositories {
 }
 
 dependencies {
-	compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.1.0")
+	compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.2.21")
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
 	compileOnly("org.apache.logging.log4j:log4j-core:2.24.3")
 	compileOnly("me.clip:placeholderapi:2.11.6")
 	compileOnly(files("C:\\Users\\DaniDipp\\Downloads\\1.21.4\\SneakyPocketbase-1.0.jar"))
 	compileOnly(files("libs/SneakyCharacterManager-1.0-SNAPSHOT.jar"))
+	compileOnly(files("libs/MagicSpells-4.0-Beta-13.jar"))
+	compileOnly(files("libs/CMI-API9.7.14.3.jar"))
+	compileOnly(files("libs/dippgen-1.0.jar"))
 }
 
 tasks.jar {
