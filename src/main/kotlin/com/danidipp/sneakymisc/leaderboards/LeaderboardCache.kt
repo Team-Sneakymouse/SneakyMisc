@@ -1,5 +1,6 @@
 package com.danidipp.sneakymisc.leaderboards
 
+import com.danidipp.sneakymail.SneakyMail
 import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakymisc.SneakyModule
 import com.nisovin.magicspells.MagicSpells
@@ -36,18 +37,29 @@ data class LeaderboardConfig(
     val name: String,
     val type: LeaderboardType,
     val valueVariable: String,
-    val displayVariables: List<String>
+    val displayVariables: List<String>,
+    val rewards: Map<String, String>?
+)
+
+data class RewardRule(
+    val range: IntRange,
+    val reward: String
 )
 
 class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
     private val leaderboards = mutableMapOf<String, Leaderboard>()
     val ONE_MINUTE = 20L * 60L
 
+    fun getLeaderboard(name: String): Leaderboard? {
+        return leaderboards[name]
+    }
+
     inner class Leaderboard(
         val name: String,
         val type: LeaderboardType,
         val valueVariable: Variable,
-        val displayVariables: List<GlobalStringVariable>
+        val displayVariables: List<GlobalStringVariable>,
+        val rewardRules: List<RewardRule>
     ) {
         val cache = ConcurrentMap<UUID, LeaderboardEntry>()
 
@@ -84,12 +96,15 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
         }
     }
 
-    override val commands: List<Command> = listOf(object : Command("debugleaderboard") {
-        init {
-            description = "Debug command for leaderboard cache"
-            usage = "/debugleaderboard [leaderboard_name]"
-            permission = "sneakymisc.command.debugleaderboard"
-        }
+    override val commands: List<Command> = listOf(
+        LeaderboardRewardsCmd(plugin, this),
+        object : Command("debugleaderboard") {
+            init {
+                description = "Debug command for leaderboard cache"
+                usage = "/debugleaderboard [leaderboard_name]"
+                permission = "sneakymisc.command.debugleaderboard"
+            }
+
 
         override fun execute(sender: CommandSender, commandLabel: String, args: Array<out String>): Boolean {
             if (!plugin.isEnabled) {
@@ -196,6 +211,18 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
             val type = section.getString("type")
             val values = section.getStringList("values")
             val display = section.getStringList("display")
+            
+            // Parse rewards section if it exists
+            val rewardsSection = section.getConfigurationSection("rewards")
+            val rewardsMap = mutableMapOf<String, String>()
+            if (rewardsSection != null) {
+                for (rewardKey in rewardsSection.getKeys(false)) {
+                    val rewardValue = rewardsSection.getString(rewardKey)
+                    if (rewardValue != null) {
+                        rewardsMap[rewardKey] = rewardValue
+                    }
+                }
+            }
 
             // Validate configuration
             val lbType = try {
@@ -222,7 +249,8 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
                 name = key,
                 type = lbType,
                 valueVariable = values[0],
-                displayVariables = display
+                displayVariables = display,
+                rewards = if (rewardsMap.isNotEmpty()) rewardsMap else null
             ))
         }
 
@@ -250,13 +278,38 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
                 continue
             }
 
+            // Parse reward rules
+            val rewardRules = mutableListOf<RewardRule>()
+            lbConfig.rewards?.forEach { (rangeStr, rewardSpell) ->
+                try {
+                    val range = when {
+                        rangeStr.contains("-") -> {
+                            val parts = rangeStr.split("-")
+                            parts[0].toInt()..parts[1].toInt()
+                        }
+                        rangeStr.endsWith("+") -> {
+                            val start = rangeStr.dropLast(1).toInt()
+                            start..Int.MAX_VALUE
+                        }
+                        else -> {
+                            val single = rangeStr.toInt()
+                            single..single
+                        }
+                    }
+                    rewardRules.add(RewardRule(range, rewardSpell))
+                } catch (e: NumberFormatException) {
+                    plugin.logger.warning("Leaderboard '${lbConfig.name}': Invalid reward range format '$rangeStr'. Use 'X', 'X-Y', or 'X+'.")
+                }
+            }
+
             leaderboards[lbConfig.name] = Leaderboard(
                 name = lbConfig.name,
                 type = lbConfig.type,
                 valueVariable = valueVariable,
-                displayVariables = displayVariables
+                displayVariables = displayVariables,
+                rewardRules = rewardRules
             )
-            plugin.logger.info("Leaderboard '${lbConfig.name}' initialized with ${displayVariables.size} display variables")
+            plugin.logger.info("Leaderboard '${lbConfig.name}' initialized with ${displayVariables.size} display variables and ${rewardRules.size} reward rules")
         }
     }
 

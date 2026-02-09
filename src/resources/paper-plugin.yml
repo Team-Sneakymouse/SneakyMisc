@@ -19,3 +19,6 @@ dependencies:
     MagicSpells:
       load: BEFORE
       required: false
+    SneakyMail:
+      load: BEFORE
+      required: true

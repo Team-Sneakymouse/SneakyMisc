@@ -23,10 +23,7 @@ dependencies {
 	compileOnly("org.apache.logging.log4j:log4j-core:2.24.3")
 	compileOnly("me.clip:placeholderapi:2.11.6")
 	compileOnly(files("C:\\Users\\DaniDipp\\Downloads\\1.21.4\\SneakyPocketbase-1.0.jar"))
-	compileOnly(files("libs/SneakyCharacterManager-1.0-SNAPSHOT.jar"))
-	compileOnly(files("libs/MagicSpells-4.0-Beta-13.jar"))
-	compileOnly(files("libs/CMI-API9.7.14.3.jar"))
-	compileOnly(files("libs/dippgen-1.0.jar"))
+	compileOnly(fileTree("libs") { include("*.jar") })
 }
 
 tasks.jar {
