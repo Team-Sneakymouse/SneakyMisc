@@ -4,7 +4,7 @@ import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakymisc.SneakyModule
 import com.nisovin.magicspells.MagicSpells
 import com.nisovin.magicspells.events.MagicSpellsLoadedEvent
-import com.nisovin.magicspells.variables.variabletypes.CharacterVariable
+import com.nisovin.magicspells.variables.Variable
 import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
 import io.ktor.util.collections.ConcurrentMap
 import net.sneakycharactermanager.paper.handlers.character.Character
@@ -12,9 +12,11 @@ import net.sneakycharactermanager.paper.handlers.character.LoadCharacterEvent
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerQuitEvent
+import java.io.File
 import java.util.UUID
 import kotlin.math.roundToLong
 
@@ -24,19 +26,68 @@ data class LeaderboardEntry(
     val characterName: String,
     val value: Double
 )
+
+enum class LeaderboardType {
+    PLAYER,
+    CHARACTER
+}
+
+data class LeaderboardConfig(
+    val name: String,
+    val type: LeaderboardType,
+    val valueVariable: String,
+    val displayVariables: List<String>
+)
+
 class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
-    val bountyCache = ConcurrentMap<UUID, LeaderboardEntry>()
-    lateinit var bountyLeaderboard: List<GlobalStringVariable>
-    lateinit var bountyVariable: CharacterVariable
-    val paladinCache = ConcurrentMap<UUID, LeaderboardEntry>()
-    lateinit var paladinLeaderboard: List<GlobalStringVariable>
-    lateinit var paladinVariable: CharacterVariable
+    private val leaderboards = mutableMapOf<String, Leaderboard>()
     val ONE_MINUTE = 20L * 60L
+
+    inner class Leaderboard(
+        val name: String,
+        val type: LeaderboardType,
+        val valueVariable: Variable,
+        val displayVariables: List<GlobalStringVariable>
+    ) {
+        val cache = ConcurrentMap<UUID, LeaderboardEntry>()
+
+        fun update(character: Character, value: Double) {
+            val playerUUID = character.player.uniqueId
+            val characterUUID = UUID.fromString(character.characterUUID)
+            val cacheKey = if (type == LeaderboardType.PLAYER) playerUUID else characterUUID
+            
+            if (value <= 1.0E-6) {
+                cache.remove(cacheKey)
+                return
+            }
+
+            cache.put(cacheKey, LeaderboardEntry(
+                playerUUID = playerUUID,
+                characterUUID = characterUUID,
+                characterName = character.name,
+                value = value
+            ))
+        }
+
+        fun updateScoreboard() {
+            val sortedEntries = cache.values.sortedByDescending { it.value }.take(displayVariables.size)
+            for (i in displayVariables.indices) {
+                val variable = displayVariables[i]
+                val entry = sortedEntries.getOrNull(i)
+                if (entry == null) {
+                    variable.parseAndSet("null", "")
+                    continue
+                }
+                val formattedValue = String.format("%,d", entry.value.roundToLong())
+                variable.parseAndSet("null", "${entry.characterName} $formattedValue")
+            }
+        }
+    }
 
     override val commands: List<Command> = listOf(object : Command("debugleaderboard") {
         init {
-            description = "Debug command for bounty leaderboard cache"
-            usage = "/debugleaderboard <bounty|paladin>"
+            description = "Debug command for leaderboard cache"
+            usage = "/debugleaderboard [leaderboard_name]"
             permission = "sneakymisc.command.debugleaderboard"
         }
 
@@ -45,160 +96,173 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
                 sender.sendMessage("Plugin is disabled")
                 return true
             }
-            if (!::bountyVariable.isInitialized) {
-                sender.sendMessage("MSVariables not initialized")
+            
+            val leaderboardName = args.getOrNull(0)
+            
+            // No arguments: list available leaderboards
+            if (leaderboardName == null) {
+                if (leaderboards.isEmpty()) {
+                    sender.sendMessage("No leaderboards configured")
+                } else {
+                    sender.sendMessage("Available leaderboards: ${leaderboards.keys.joinToString(", ")}")
+                }
                 return true
             }
-            val type = args.getOrNull(0)
-            if (type == null) {
-                sender.sendMessage("Usage: $usage")
+            
+            // Valid leaderboard name: show cached entries
+            val leaderboard = leaderboards[leaderboardName]
+            if (leaderboard == null) {
+                sender.sendMessage("Unknown leaderboard: $leaderboardName")
                 return true
             }
-            when (type.lowercase()) {
-                "bounty" -> {
-                    sender.sendMessage("Bounty Cache Entries (${bountyCache.size}):")
-                    val sortedEntries = bountyCache.values.sortedByDescending { it.value }.take(32)
-                    for (entry in sortedEntries) sender.sendMessage(" - ${entry.characterName}: ${entry.value}")
-                    return true
-                }
-                "paladin" -> {
-                    sender.sendMessage("Paladin Cache Entries (${paladinCache.size}):")
-                    val sortedEntries = paladinCache.values.sortedByDescending { it.value }.take(32)
-                    for (entry in sortedEntries) sender.sendMessage(" - ${entry.characterName}: ${entry.value}")
-                    return true
-                }
-                else -> {
-                    sender.sendMessage("Unknown leaderboard type: $type")
-                    return true
-                }
+            
+            sender.sendMessage("$leaderboardName Cache Entries (${leaderboard.cache.size}):")
+            val sortedEntries = leaderboard.cache.values.sortedByDescending { it.value }.take(32)
+            for (entry in sortedEntries) {
+                sender.sendMessage(" - ${entry.characterName}: ${entry.value}")
             }
+            return true
         }
     })
+
     override val listeners: List<Listener> = listOf(object: Listener {
         @EventHandler
         fun onMSEnable(event: MagicSpellsLoadedEvent) {
-            bountyLeaderboard = (1..32).mapNotNull { MagicSpells.getVariableManager().getVariable("bounty$it") as? GlobalStringVariable }
-            val maybeBountyVariable = MagicSpells.getVariableManager().getVariable("bankBounty") as? CharacterVariable
-            paladinLeaderboard = (1..32).mapNotNull { MagicSpells.getVariableManager().getVariable("toppaladin$it") as? GlobalStringVariable }
-            val maybePaladinVariable = MagicSpells.getVariableManager().getVariable("paladinArrests") as? CharacterVariable
-
-            if (bountyLeaderboard.size < 32 || paladinLeaderboard.size < 32) {
-                if (bountyLeaderboard.size < 32)
-                    plugin.logger.warning("Bounty leaderboard variables not properly configured. Expected 32, found ${bountyLeaderboard.size}.")
-                if (paladinLeaderboard.size < 32)
-                    plugin.logger.warning("Paladin leaderboard variables not properly configured. Expected 32, found ${paladinLeaderboard.size}.")
-                Bukkit.getPluginManager().disablePlugin(plugin)
-                return
-            }
-            if (maybeBountyVariable == null || maybePaladinVariable == null) {
-                if (maybeBountyVariable == null)
-                    plugin.logger.warning("Character variable 'bankBounty' not found.")
-                if (maybePaladinVariable == null)
-                    plugin.logger.warning("Character variable 'paladinArrests' not found.")
-                Bukkit.getPluginManager().disablePlugin(plugin)
-                return
-            }
-            bountyVariable = maybeBountyVariable
-            paladinVariable = maybePaladinVariable
+            loadConfig()
         }
+
         @EventHandler
         fun onCharacterLoad(event: LoadCharacterEvent) {
-            if (!::bountyVariable.isInitialized) {
-                plugin.logger.warning("MSVariables not initialized before LoadCharacterEvent")
+            if (leaderboards.isEmpty()) {
                 return
             }
             val currentCharacter = Character.get(event.player) ?: return
-            val bountyValue = bountyVariable.getValue(event.player)
-            val paladinValue = paladinVariable.getValue(event.player)
-            updateBounty(currentCharacter, bountyValue)
-            updatePaladin(currentCharacter, paladinValue)
+            for ((_, leaderboard) in leaderboards) {
+                val value = leaderboard.valueVariable.getValue(event.player)
+                leaderboard.update(currentCharacter, value)
+            }
         }
+
         @EventHandler
         fun onPlayerQuit(event: PlayerQuitEvent){
-            if (!::bountyVariable.isInitialized) {
-                plugin.logger.warning("MSVariables not initialized before PlayerQuitEvent")
+            if (leaderboards.isEmpty()) {
                 return
             }
             val currentCharacter = Character.get(event.player) ?: return
-            val bountyValue = bountyVariable.getValue(event.player)
-            val paladinValue = paladinVariable.getValue(event.player)
-            updateBounty(currentCharacter, bountyValue)
-            updatePaladin(currentCharacter, paladinValue)
+            for ((_, leaderboard) in leaderboards) {
+                val value = leaderboard.valueVariable.getValue(event.player)
+                leaderboard.update(currentCharacter, value)
+            }
         }
     })
 
     init {
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, Runnable {
-            if (!::bountyVariable.isInitialized) {
-                plugin.logger.warning("MSVariables not initialized before scheduled leaderboard update")
+            if (leaderboards.isEmpty()) {
                 return@Runnable
             }
             for (player in Bukkit.getOnlinePlayers()) {
                 val character = Character.get(player) ?: continue
-                val bountyValue = bountyVariable.getValue(player)
-                val paladinValue = paladinVariable.getValue(player)
-                updateBounty(character, bountyValue)
-                updatePaladin(character, paladinValue)
+                for ((_, leaderboard) in leaderboards) {
+                    val value = leaderboard.valueVariable.getValue(player)
+                    leaderboard.update(character, value)
+                }
             }
 
             Bukkit.getScheduler().runTask(plugin, Runnable {
                 updateScoreboards()
             })
         }, ONE_MINUTE, ONE_MINUTE)
-
     }
 
-    fun updateBounty(character: Character, value: Double) {
-        val characterUUID = UUID.fromString(character.characterUUID)
-        if (value <= 1.0E-6) {
-            bountyCache.remove(characterUUID)
+    private fun loadConfig() {
+        val configFile = File(plugin.dataFolder, "leaderboards.yml")
+        if (!configFile.exists()) {
+            plugin.logger.info("No leaderboards.yml found, no leaderboards will be created")
             return
         }
 
-        bountyCache.put(characterUUID, LeaderboardEntry(
-            playerUUID = character.player.uniqueId,
-            characterUUID = characterUUID,
-            characterName = character.name,
-            value = value
-        ))
-    }
-    fun updatePaladin(character: Character, value: Double) {
-        val characterUUID = UUID.fromString(character.characterUUID)
-        if (value <= 1.0E-6) {
-            paladinCache.remove(characterUUID)
-            return
+        val config = YamlConfiguration.loadConfiguration(configFile)
+        val leaderboardConfigs = mutableListOf<LeaderboardConfig>()
+
+        // Parse each top-level key as a leaderboard
+        for (key in config.getKeys(false)) {
+            val section = config.getConfigurationSection(key)
+            if (section == null) {
+                plugin.logger.warning("Leaderboard '$key': Invalid configuration section")
+                continue
+            }
+
+            val type = section.getString("type")
+            val values = section.getStringList("values")
+            val display = section.getStringList("display")
+
+            // Validate configuration
+            val lbType = try {
+                LeaderboardType.valueOf(type!!.uppercase())
+            } catch (e: Exception) {
+                plugin.logger.warning("Leaderboard '$key': Unknown type '$type' (supported: 'player', 'character')")
+                continue
+            }
+
+            if (values.isEmpty()) {
+                plugin.logger.warning("Leaderboard '$key': 'values' list is empty")
+                continue
+            }
+            if (values.size > 1) {
+                plugin.logger.warning("Leaderboard '$key': Only supports a single value variable, found ${values.size}")
+                continue
+            }
+            if (display.isEmpty()) {
+                plugin.logger.warning("Leaderboard '$key': 'display' list is empty")
+                continue
+            }
+
+            leaderboardConfigs.add(LeaderboardConfig(
+                name = key,
+                type = lbType,
+                valueVariable = values[0],
+                displayVariables = display
+            ))
         }
 
-        paladinCache.put(characterUUID, LeaderboardEntry(
-            playerUUID = character.player.uniqueId,
-            characterUUID = characterUUID,
-            characterName = character.name,
-            value = value
-        ))
+        // Create leaderboard instances from validated configs
+        for (lbConfig in leaderboardConfigs) {
+            val valueVariable = MagicSpells.getVariableManager().getVariable(lbConfig.valueVariable)
+            if (valueVariable == null) {
+                plugin.logger.warning("Leaderboard '${lbConfig.name}': Variable '${lbConfig.valueVariable}' not found")
+                continue
+            }
+
+            val displayVariables = mutableListOf<GlobalStringVariable>()
+            var hasError = false
+            for (displayVarName in lbConfig.displayVariables) {
+                val displayVar = MagicSpells.getVariableManager().getVariable(displayVarName) as? GlobalStringVariable
+                if (displayVar == null) {
+                    plugin.logger.warning("Leaderboard '${lbConfig.name}': Display variable '$displayVarName' not found")
+                    hasError = true
+                    break
+                }
+                displayVariables.add(displayVar)
+            }
+
+            if (hasError) {
+                continue
+            }
+
+            leaderboards[lbConfig.name] = Leaderboard(
+                name = lbConfig.name,
+                type = lbConfig.type,
+                valueVariable = valueVariable,
+                displayVariables = displayVariables
+            )
+            plugin.logger.info("Leaderboard '${lbConfig.name}' initialized with ${displayVariables.size} display variables")
+        }
     }
 
     fun updateScoreboards() {
-        val sortedBounties = bountyCache.values.sortedByDescending { it.value }.take(32) // sorted snapshot
-        for (i in bountyLeaderboard.indices) {
-            val variable = bountyLeaderboard[i]
-            val entry = sortedBounties.getOrNull(i)
-            if (entry == null) {
-                variable.parseAndSet("null", "")
-                continue
-            }
-            val formattedValue = String.format("%,d", entry.value.roundToLong())
-            variable.parseAndSet("null", "${entry.characterName} $formattedValue")
-        }
-        val sortedPaladins = paladinCache.values.sortedByDescending { it.value }.take(32) // sorted snapshot
-        for (i in paladinLeaderboard.indices) {
-            val variable = paladinLeaderboard[i]
-            val entry = sortedPaladins.getOrNull(i)
-            if (entry == null) {
-                variable.parseAndSet("null", "")
-                continue
-            }
-            val formattedValue = String.format("%,d", entry.value.roundToLong())
-            variable.parseAndSet("null", "${entry.characterName} $formattedValue")
+        for ((_, leaderboard) in leaderboards) {
+            leaderboard.updateScoreboard()
         }
     }
 }
