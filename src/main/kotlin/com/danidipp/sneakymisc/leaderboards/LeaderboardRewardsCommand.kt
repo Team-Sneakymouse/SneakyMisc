@@ -5,13 +5,13 @@ import com.danidipp.sneakymail.MailReward
 import com.danidipp.sneakymail.SneakyMail
 import com.danidipp.sneakymisc.SneakyMisc
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.minimessage.MiniMessage
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 
-class LeaderboardRewardsCmd(private val plugin: SneakyMisc, private val cache: LeaderboardCache) : Command("leaderboardrewards") {
+class LeaderboardRewardsCommand(private val plugin: SneakyMisc, private val module: LeaderboardsModule) : Command("leaderboardrewards") {
     
     init {
         description = "Distribute rewards for a leaderboard"
@@ -23,62 +23,52 @@ class LeaderboardRewardsCmd(private val plugin: SneakyMisc, private val cache: L
         if (!testPermission(sender)) return true
 
         if (args.isEmpty()) {
-            sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>Usage: $usage</red>"))
+            sender.sendMessage(Component.text("Usage: $usage").color(NamedTextColor.RED))
             return true
         }
 
         val leaderboardName = args[0]
-        val leaderboard = cache.getLeaderboard(leaderboardName)
+        val leaderboard = module.leaderboards[leaderboardName]
 
         if (leaderboard == null) {
-            sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>Leaderboard '$leaderboardName' not found.</red>"))
+            sender.sendMessage(Component.text("Leaderboard '$leaderboardName' not found.").color(NamedTextColor.RED))
             return true
         }
 
         if (leaderboard.rewardRules.isEmpty()) {
-            sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>Leaderboard '$leaderboardName' has no rewards configured.</red>"))
+            sender.sendMessage(Component.text("Leaderboard '$leaderboardName' has no rewards configured.").color(NamedTextColor.RED))
             return true
         }
 
-        val sortedEntries = leaderboard.cache.values.sortedByDescending { it.value }
+        val sortedEntries = leaderboard.userCache.values.sortedByDescending { it.value }
         if (sortedEntries.isEmpty()) {
-            sender.sendMessage(MiniMessage.miniMessage().deserialize("<yellow>Leaderboard '$leaderboardName' is empty. No rewards to distribute.</yellow>"))
+            sender.sendMessage(Component.text("Leaderboard '$leaderboardName' is empty. No rewards to distribute.").color(NamedTextColor.YELLOW))
             return true
         }
 
         var mailsSent = 0
-        
-        // Don't block main thread with mail creation if list is huge, though createMailAsync handles DB IO asynchronously.
-        // We will process the logic on the main thread because accessing cache/creating components is fast and safe.
-        
         for ((index, entry) in sortedEntries.withIndex()) {
             val rank = index + 1
             val rewards = mutableListOf<MailReward>()
 
             for (rule in leaderboard.rewardRules) {
                 if (rank in rule.range) {
-                    // Create command reward. The command is run as console usually, replacing {player}
-                    // SneakyMail CommandReward format: "ms cast as {player} spell" or simply command string
-                    // The Request specified: "ms cast as {player} "+magicSpellName
-                    // and "rewards config value" IS the magicSpellName.
-                    
-                    val command = "ms cast as {player} ${rule.reward}"
-                    rewards.add(MailReward.CommandReward(command))
+                    rewards.add(MailReward.CommandReward("ms cast as {player} ${rule.rewardSpell}"))
                 }
             }
 
             if (rewards.isNotEmpty()) {
                 val player = Bukkit.getOfflinePlayer(entry.playerUUID)
-                sendRewardMail(player, rank, leaderboardName, rewards)
+                sendRewardMail(player, rank, rewards)
                 mailsSent++
             }
         }
 
-        sender.sendMessage(MiniMessage.miniMessage().deserialize("<green>Distributed rewards for '$leaderboardName' to $mailsSent players.</green>"))
+        sender.sendMessage(Component.text("Distributed rewards for '$leaderboardName' to $mailsSent players.").color(NamedTextColor.GREEN))
         return true
     }
 
-    private fun sendRewardMail(recipient: OfflinePlayer, rank: Int, leaderboardName: String, rewards: List<MailReward>) {
+    private fun sendRewardMail(recipient: OfflinePlayer, rank: Int, rewards: List<MailReward>) {
         // SneakyMail API usage based on user provided snippet
         SneakyMail.getInstance().mailSender.createMailAsync(
             MailRecord(
@@ -87,9 +77,7 @@ class LeaderboardRewardsCmd(private val plugin: SneakyMisc, private val cache: L
                 recipient_name = recipient.name ?: "Unknown",
                 recipient_uuid = recipient.uniqueId.toString(),
                 available = true,
-                note = MiniMessage.miniMessage().serialize(
-                    Component.text("<gold>Congratulations!</gold>\nYou achieved <yellow>${getOrdinal(rank)}</yellow> place on a leaderboard!")
-                ),
+                note = "<gold>Congratulations!</gold>\nYou achieved <yellow>${getOrdinal(rank)}</yellow> place on a leaderboard!",
                 rewards = rewards
             )
         )

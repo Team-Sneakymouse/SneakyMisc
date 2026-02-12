@@ -1,6 +1,5 @@
 package com.danidipp.sneakymisc.leaderboards
 
-import com.danidipp.sneakymail.SneakyMail
 import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakymisc.SneakyModule
 import com.nisovin.magicspells.MagicSpells
@@ -12,8 +11,6 @@ import net.sneakycharactermanager.paper.handlers.character.Character
 import net.sneakycharactermanager.paper.handlers.character.LoadCharacterEvent
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
-import org.bukkit.command.CommandSender
-import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerQuitEvent
@@ -28,31 +25,9 @@ data class LeaderboardEntry(
     val value: Double
 )
 
-enum class LeaderboardType {
-    PLAYER,
-    CHARACTER
-}
-
-data class LeaderboardConfig(
-    val name: String,
-    val type: LeaderboardType,
-    val valueVariable: String,
-    val displayVariables: List<String>,
-    val rewards: Map<String, String>?
-)
-
-data class RewardRule(
-    val range: IntRange,
-    val reward: String
-)
-
-class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
-    private val leaderboards = mutableMapOf<String, Leaderboard>()
+class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule {
+    val leaderboards = mutableMapOf<String, Leaderboard>()
     val ONE_MINUTE = 20L * 60L
-
-    fun getLeaderboard(name: String): Leaderboard? {
-        return leaderboards[name]
-    }
 
     inner class Leaderboard(
         val name: String,
@@ -61,7 +36,7 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
         val displayVariables: List<GlobalStringVariable>,
         val rewardRules: List<RewardRule>
     ) {
-        val cache = ConcurrentMap<UUID, LeaderboardEntry>()
+        val userCache = ConcurrentMap<UUID, LeaderboardEntry>()
 
         fun update(character: Character, value: Double) {
             val playerUUID = character.player.uniqueId
@@ -69,11 +44,11 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
             val cacheKey = if (type == LeaderboardType.PLAYER) playerUUID else characterUUID
             
             if (value <= 1.0E-6) {
-                cache.remove(cacheKey)
+                userCache.remove(cacheKey)
                 return
             }
 
-            cache.put(cacheKey, LeaderboardEntry(
+            userCache.put(cacheKey, LeaderboardEntry(
                 playerUUID = playerUUID,
                 characterUUID = characterUUID,
                 characterName = character.name,
@@ -81,8 +56,8 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
             ))
         }
 
-        fun updateScoreboard() {
-            val sortedEntries = cache.values.sortedByDescending { it.value }.take(displayVariables.size)
+        fun updateDisplays() {
+            val sortedEntries = userCache.values.sortedByDescending { it.value }.take(displayVariables.size)
             for (i in displayVariables.indices) {
                 val variable = displayVariables[i]
                 val entry = sortedEntries.getOrNull(i)
@@ -97,48 +72,9 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
     }
 
     override val commands: List<Command> = listOf(
-        LeaderboardRewardsCmd(plugin, this),
-        object : Command("debugleaderboard") {
-            init {
-                description = "Debug command for leaderboard cache"
-                usage = "/debugleaderboard [leaderboard_name]"
-                permission = "sneakymisc.command.debugleaderboard"
-            }
-
-
-        override fun execute(sender: CommandSender, commandLabel: String, args: Array<out String>): Boolean {
-            if (!plugin.isEnabled) {
-                sender.sendMessage("Plugin is disabled")
-                return true
-            }
-            
-            val leaderboardName = args.getOrNull(0)
-            
-            // No arguments: list available leaderboards
-            if (leaderboardName == null) {
-                if (leaderboards.isEmpty()) {
-                    sender.sendMessage("No leaderboards configured")
-                } else {
-                    sender.sendMessage("Available leaderboards: ${leaderboards.keys.joinToString(", ")}")
-                }
-                return true
-            }
-            
-            // Valid leaderboard name: show cached entries
-            val leaderboard = leaderboards[leaderboardName]
-            if (leaderboard == null) {
-                sender.sendMessage("Unknown leaderboard: $leaderboardName")
-                return true
-            }
-            
-            sender.sendMessage("$leaderboardName Cache Entries (${leaderboard.cache.size}):")
-            val sortedEntries = leaderboard.cache.values.sortedByDescending { it.value }.take(32)
-            for (entry in sortedEntries) {
-                sender.sendMessage(" - ${entry.characterName}: ${entry.value}")
-            }
-            return true
-        }
-    })
+        LeaderboardDebugCommand(plugin, this),
+        LeaderboardRewardsCommand(plugin, this),
+    )
 
     override val listeners: List<Listener> = listOf(object: Listener {
         @EventHandler
@@ -185,74 +121,14 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
             }
 
             Bukkit.getScheduler().runTask(plugin, Runnable {
-                updateScoreboards()
+                updateDisplays()
             })
         }, ONE_MINUTE, ONE_MINUTE)
     }
 
     private fun loadConfig() {
         val configFile = File(plugin.dataFolder, "leaderboards.yml")
-        if (!configFile.exists()) {
-            plugin.logger.info("No leaderboards.yml found, no leaderboards will be created")
-            return
-        }
-
-        val config = YamlConfiguration.loadConfiguration(configFile)
-        val leaderboardConfigs = mutableListOf<LeaderboardConfig>()
-
-        // Parse each top-level key as a leaderboard
-        for (key in config.getKeys(false)) {
-            val section = config.getConfigurationSection(key)
-            if (section == null) {
-                plugin.logger.warning("Leaderboard '$key': Invalid configuration section")
-                continue
-            }
-
-            val type = section.getString("type")
-            val values = section.getStringList("values")
-            val display = section.getStringList("display")
-            
-            // Parse rewards section if it exists
-            val rewardsSection = section.getConfigurationSection("rewards")
-            val rewardsMap = mutableMapOf<String, String>()
-            if (rewardsSection != null) {
-                for (rewardKey in rewardsSection.getKeys(false)) {
-                    val rewardValue = rewardsSection.getString(rewardKey)
-                    if (rewardValue != null) {
-                        rewardsMap[rewardKey] = rewardValue
-                    }
-                }
-            }
-
-            // Validate configuration
-            val lbType = try {
-                LeaderboardType.valueOf(type!!.uppercase())
-            } catch (e: Exception) {
-                plugin.logger.warning("Leaderboard '$key': Unknown type '$type' (supported: 'player', 'character')")
-                continue
-            }
-
-            if (values.isEmpty()) {
-                plugin.logger.warning("Leaderboard '$key': 'values' list is empty")
-                continue
-            }
-            if (values.size > 1) {
-                plugin.logger.warning("Leaderboard '$key': Only supports a single value variable, found ${values.size}")
-                continue
-            }
-            if (display.isEmpty()) {
-                plugin.logger.warning("Leaderboard '$key': 'display' list is empty")
-                continue
-            }
-
-            leaderboardConfigs.add(LeaderboardConfig(
-                name = key,
-                type = lbType,
-                valueVariable = values[0],
-                displayVariables = display,
-                rewards = if (rewardsMap.isNotEmpty()) rewardsMap else null
-            ))
-        }
+        val leaderboardConfigs = LeaderboardConfig.load(configFile, plugin.logger)
 
         // Create leaderboard instances from validated configs
         for (lbConfig in leaderboardConfigs) {
@@ -274,9 +150,7 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
                 displayVariables.add(displayVar)
             }
 
-            if (hasError) {
-                continue
-            }
+            if (hasError) continue
 
             // Parse reward rules
             val rewardRules = mutableListOf<RewardRule>()
@@ -313,9 +187,9 @@ class LeaderboardCache(val plugin: SneakyMisc): SneakyModule {
         }
     }
 
-    fun updateScoreboards() {
+    fun updateDisplays() {
         for ((_, leaderboard) in leaderboards) {
-            leaderboard.updateScoreboard()
+            leaderboard.updateDisplays()
         }
     }
 }
