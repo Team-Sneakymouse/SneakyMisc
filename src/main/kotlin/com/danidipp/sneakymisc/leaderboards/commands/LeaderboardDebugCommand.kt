@@ -1,6 +1,7 @@
-package com.danidipp.sneakymisc.leaderboards
+package com.danidipp.sneakymisc.leaderboards.commands
 
 import com.danidipp.sneakymisc.SneakyMisc
+import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 

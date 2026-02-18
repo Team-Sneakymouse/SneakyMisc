@@ -2,135 +2,99 @@ package com.danidipp.sneakymisc.leaderboards
 
 import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakymisc.SneakyModule
+import com.danidipp.sneakymisc.leaderboards.commands.LeaderboardDebugCommand
 import com.nisovin.magicspells.MagicSpells
 import com.nisovin.magicspells.events.MagicSpellsLoadedEvent
-import com.nisovin.magicspells.variables.Variable
 import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
-import io.ktor.util.collections.ConcurrentMap
 import net.sneakycharactermanager.paper.handlers.character.Character
-import net.sneakycharactermanager.paper.handlers.character.LoadCharacterEvent
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
-import org.bukkit.event.player.PlayerQuitEvent
 import java.io.File
-import java.util.UUID
-import kotlin.math.roundToLong
+import java.time.LocalDate
+import java.time.ZoneId
 
-data class LeaderboardEntry(
-    val playerUUID: UUID,
-    val characterUUID: UUID,
-    val characterName: String,
-    val value: Double
-)
+import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
+import com.danidipp.sneakypocketbase.SneakyPocketbase
 
 class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule {
     val leaderboards = mutableMapOf<String, Leaderboard>()
-    val ONE_MINUTE = 20L * 60L
-
-    inner class Leaderboard(
-        val name: String,
-        val type: LeaderboardType,
-        val valueVariable: Variable,
-        val displayVariables: List<GlobalStringVariable>,
-        val rewardRules: List<RewardRule>
-    ) {
-        val userCache = ConcurrentMap<UUID, LeaderboardEntry>()
-
-        fun update(character: Character, value: Double) {
-            val playerUUID = character.player.uniqueId
-            val characterUUID = UUID.fromString(character.characterUUID)
-            val cacheKey = if (type == LeaderboardType.PLAYER) playerUUID else characterUUID
-            
-            if (value <= 1.0E-6) {
-                userCache.remove(cacheKey)
-                return
-            }
-
-            userCache.put(cacheKey, LeaderboardEntry(
-                playerUUID = playerUUID,
-                characterUUID = characterUUID,
-                characterName = character.name,
-                value = value
-            ))
-        }
-
-        fun updateDisplays() {
-            val sortedEntries = userCache.values.sortedByDescending { it.value }.take(displayVariables.size)
-            for (i in displayVariables.indices) {
-                val variable = displayVariables[i]
-                val entry = sortedEntries.getOrNull(i)
-                if (entry == null) {
-                    variable.parseAndSet("null", "")
-                    continue
-                }
-                val formattedValue = String.format("%,d", entry.value.roundToLong())
-                variable.parseAndSet("null", "${entry.characterName} $formattedValue")
-            }
-        }
-    }
+    val HALF_MINUTE = 20L * 30L
+    
+    private val db = LeaderboardDB(plugin.logger)
 
     override val commands: List<Command> = listOf(
-        LeaderboardDebugCommand(plugin, this),
-        LeaderboardRewardsCommand(plugin, this),
+        LeaderboardDebugCommand(plugin, this)
     )
-
     override val listeners: List<Listener> = listOf(object: Listener {
         @EventHandler
         fun onMSEnable(event: MagicSpellsLoadedEvent) {
             loadConfig()
+            leaderboards.values.forEach { it.loadInitialData() }
         }
 
         @EventHandler
-        fun onCharacterLoad(event: LoadCharacterEvent) {
-            if (leaderboards.isEmpty()) {
-                return
-            }
-            val currentCharacter = Character.get(event.player) ?: return
-            for ((_, leaderboard) in leaderboards) {
-                val value = leaderboard.valueVariable.getValue(event.player)
-                leaderboard.update(currentCharacter, value)
-            }
-        }
-
-        @EventHandler
-        fun onPlayerQuit(event: PlayerQuitEvent){
-            if (leaderboards.isEmpty()) {
-                return
-            }
-            val currentCharacter = Character.get(event.player) ?: return
-            for ((_, leaderboard) in leaderboards) {
-                val value = leaderboard.valueVariable.getValue(event.player)
-                leaderboard.update(currentCharacter, value)
-            }
+        fun onPocketbaseEvent(event: AsyncPocketbaseEvent) {
+            val record = db.parseEvent(event) ?: return
+            var leaderboard = leaderboards[record.leaderboard] ?: return
+            leaderboard.handleRealtimeUpdate(record, event.action)
+            plugin.logger.info("Received Pocketbase update for ${record.leaderboard} (name: ${record.name}, value: ${record.value}")
+            
+            // Immediately update displays for this leaderboard
+            Bukkit.getScheduler().runTask(plugin, Runnable {
+                leaderboard.updateDisplays()
+            })
         }
     })
 
     init {
+        val pb = SneakyPocketbase.getInstance()
+        pb.onPocketbaseLoaded {
+            plugin.logger.info("Subscribing to Pocketbase leaderboard updates ('${db.LEADERBOARDS_COLLECTION}')")
+            pb.subscribeAsync(db.LEADERBOARDS_COLLECTION)
+        }
+
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, Runnable {
-            if (leaderboards.isEmpty()) {
-                return@Runnable
-            }
+            if (leaderboards.isEmpty()) return@Runnable
+            
+            val dateVariable = MagicSpells.getVariableManager().getVariable("leaderboardCount")
             for (player in Bukkit.getOnlinePlayers()) {
                 val character = Character.get(player) ?: continue
+
+                // Get player's specific date variable
+                val dateInt = (dateVariable?.getValue(player) ?: 0.0).toInt()
+                
+                // Convert yyMMdd to ISO format with time 00:00:00 in UTC-7, or use current server date if invalid
+                val playerDateStr = if (dateInt > 0) {
+                   try {
+                       val year = 2000 + (dateInt / 10000)
+                       val month = (dateInt % 10000) / 100
+                       val day = dateInt % 100
+                       val localDate = LocalDate.of(year, month, day)
+                       // 00:00:00 in UTC-7
+                       localDate.atStartOfDay(ZoneId.of("UTC-07:00")).toInstant().toString()
+                   } catch (e: Exception) {
+                       // Current server date at 00:00:00 UTC-7
+                       LocalDate.now(ZoneId.of("UTC-07:00")).atStartOfDay(ZoneId.of("UTC-07:00")).toInstant().toString()
+                   }
+                } else {
+                    // Current server date at 00:00:00 UTC-7
+                    LocalDate.now(ZoneId.of("UTC-07:00")).atStartOfDay(ZoneId.of("UTC-07:00")).toInstant().toString()
+                }
+
                 for ((_, leaderboard) in leaderboards) {
                     val value = leaderboard.valueVariable.getValue(player)
-                    leaderboard.update(character, value)
+                    leaderboard.updateScore(character, value, playerDateStr)
                 }
             }
-
-            Bukkit.getScheduler().runTask(plugin, Runnable {
-                updateDisplays()
-            })
-        }, ONE_MINUTE, ONE_MINUTE)
+        }, HALF_MINUTE, HALF_MINUTE)
     }
 
     private fun loadConfig() {
         val configFile = File(plugin.dataFolder, "leaderboards.yml")
         val leaderboardConfigs = LeaderboardConfig.load(configFile, plugin.logger)
 
-        // Create leaderboard instances from validated configs
         for (lbConfig in leaderboardConfigs) {
             val valueVariable = MagicSpells.getVariableManager().getVariable(lbConfig.valueVariable)
             if (valueVariable == null) {
@@ -152,44 +116,15 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule {
 
             if (hasError) continue
 
-            // Parse reward rules
-            val rewardRules = mutableListOf<RewardRule>()
-            lbConfig.rewards?.forEach { (rangeStr, rewardSpell) ->
-                try {
-                    val range = when {
-                        rangeStr.contains("-") -> {
-                            val parts = rangeStr.split("-")
-                            parts[0].toInt()..parts[1].toInt()
-                        }
-                        rangeStr.endsWith("+") -> {
-                            val start = rangeStr.dropLast(1).toInt()
-                            start..Int.MAX_VALUE
-                        }
-                        else -> {
-                            val single = rangeStr.toInt()
-                            single..single
-                        }
-                    }
-                    rewardRules.add(RewardRule(range, rewardSpell))
-                } catch (e: NumberFormatException) {
-                    plugin.logger.warning("Leaderboard '${lbConfig.name}': Invalid reward range format '$rangeStr'. Use 'X', 'X-Y', or 'X+'.")
-                }
-            }
-
             leaderboards[lbConfig.name] = Leaderboard(
+                plugin = plugin,
+                db = db,
                 name = lbConfig.name,
                 type = lbConfig.type,
                 valueVariable = valueVariable,
-                displayVariables = displayVariables,
-                rewardRules = rewardRules
+                displayVariables = displayVariables
             )
-            plugin.logger.info("Leaderboard '${lbConfig.name}' initialized with ${displayVariables.size} display variables and ${rewardRules.size} reward rules")
-        }
-    }
-
-    fun updateDisplays() {
-        for ((_, leaderboard) in leaderboards) {
-            leaderboard.updateDisplays()
+            plugin.logger.info("Leaderboard '${lbConfig.name}' initialized with ${displayVariables.size} display variables")
         }
     }
 }
