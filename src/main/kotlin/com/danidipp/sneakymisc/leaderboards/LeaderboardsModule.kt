@@ -31,7 +31,11 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule {
         @EventHandler
         fun onMSEnable(event: MagicSpellsLoadedEvent) {
             loadConfig()
-            leaderboards.values.forEach { it.loadInitialData() }
+            for (leaderboard in leaderboards.values) {
+                plugin.logger.info("Loading initial data for leaderboard '${leaderboard.name}'")
+                leaderboard.loadInitialData()
+                leaderboard.updateDisplays()
+            }
         }
 
         @EventHandler
