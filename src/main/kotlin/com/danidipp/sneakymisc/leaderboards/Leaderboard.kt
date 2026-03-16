@@ -2,7 +2,6 @@ package com.danidipp.sneakymisc.leaderboards
 
 import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakypocketbase.PBRunnable
-import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
 import com.nisovin.magicspells.variables.Variable
 import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
 import io.github.agrevster.pocketbaseKotlin.services.RealtimeService
@@ -39,11 +38,12 @@ class Leaderboard(
         val characterUUID = UUID.fromString(character.characterUUID)
         val cacheKey = if (type == LeaderboardType.PLAYER) playerUUID else characterUUID
         val intValue = value.roundToInt()
+        val leaderboardDatePart = leaderboardDate.take(10)
+        val cachedEntry = userCache[cacheKey]
 
         // Debounce
         val lastSent = lastSentValues[cacheKey]
         if (lastSent == null) {
-             val cachedEntry = userCache[cacheKey]
              if (cachedEntry != null && cachedEntry.value == intValue) {
                  lastSentValues[cacheKey] = intValue
                  return
@@ -52,11 +52,26 @@ class Leaderboard(
 
         lastSentValues[cacheKey] = intValue
 
-        if (intValue <= 0) return
+        // Remove value
+        if (intValue <= 0) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, PBRunnable {
+                val recordId = if (cachedEntry?.date?.startsWith(leaderboardDatePart) == true) {
+                    cachedEntry.recordId
+                } else null
 
+                db.deleteRecord(
+                    leaderboardName = name,
+                    date = leaderboardDate,
+                    account = cacheKey.toString(),
+                    knownRecordId = recordId
+                )
+            })
+            return
+        }
+
+        // Upsert new value
         Bukkit.getScheduler().runTaskAsynchronously(plugin, PBRunnable {
-            val cachedEntry = userCache[cacheKey]
-            val recordId = if (cachedEntry?.date?.startsWith(leaderboardDate.substring(0, 10)) == true) {
+            val recordId = if (cachedEntry?.date?.startsWith(leaderboardDatePart) == true) {
                 cachedEntry.recordId
             } else null
 
@@ -110,7 +125,7 @@ class Leaderboard(
                 continue
             }
             val formattedValue = String.format("%,d", entry.value.toLong())
-            plugin.logger.warning("Updating display variable '$name${i+1}' with value '$formattedValue' for character '${entry.characterName}'")
+            plugin.logger.fine("Updating display variable '$name${i+1}' with value '$formattedValue' for character '${entry.characterName}'")
             variable.parseAndSet("null", "${entry.characterName} $formattedValue")
         }
     }
@@ -121,7 +136,7 @@ class Leaderboard(
             val date = LocalDate.now(ZoneId.of("UTC-07:00"))
             val records = db.fetchRecords(name, date)
             plugin.logger.info("Loaded ${records.size} records for leaderboard '$name'")
-            
+
             for (record in records) {
                 val uuid = runCatching { UUID.fromString(record.account) }.getOrNull() ?: run {
                     plugin.logger.severe("Invalid UUID in leaderboard record: ${record.account}")

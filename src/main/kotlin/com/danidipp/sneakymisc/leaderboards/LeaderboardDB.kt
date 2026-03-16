@@ -114,6 +114,34 @@ class LeaderboardDB(private val logger: Logger) {
         }
     }
 
+    suspend fun deleteRecord(
+        leaderboardName: String,
+        date: String,
+        account: String,
+        knownRecordId: String? = null
+    ) {
+        val pb = SneakyPocketbase.getInstance().pb()
+
+        val recordId = knownRecordId ?: try {
+            val datePart = if (date.length >= 10) date.substring(0, 10) else date
+            pb.records.getFullList<LeaderboardRecord>(
+                LEADERBOARDS_COLLECTION,
+                1,
+                SortFields(),
+                Filter("leaderboard = '$leaderboardName' && date ~ '$datePart' && account = '$account'")
+            ).firstOrNull()?.id
+        } catch (e: Exception) {
+            logger.warning("Error searching for leaderboard record to delete: ${e.message}")
+            null
+        } ?: return
+
+        try {
+            pb.records.delete(LEADERBOARDS_COLLECTION, recordId)
+        } catch (e: Exception) {
+            logger.warning("Failed to delete leaderboard record for $leaderboardName: ${e.message}")
+        }
+    }
+
     fun parseEvent(event: AsyncPocketbaseEvent): LeaderboardRecord? {
         if (event.collectionName != LEADERBOARDS_COLLECTION) return null
         return try {
