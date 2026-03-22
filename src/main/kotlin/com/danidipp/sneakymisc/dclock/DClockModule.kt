@@ -34,61 +34,8 @@ data class SettingRecord(
 
 
 class DClockModule(val logger: Logger): SneakyModule, Listener {
-    override val commands: List<Command> = listOf(object : Command("dclock-setup") {
-        init {
-            description = "DClock setup command"
-            usageMessage = "/dclock-setup"
-            permission = "sneakymisc.dclock-setup"
-        }
-        fun createEntity(location: Location, id: Int) {
-            val digit = location.world.spawn(location, ItemDisplay::class.java) {
-                it.setItemStack(digitItems['0'])
-                it.brightness = Display.Brightness(15, 15)
-                it.transformation = Transformation(
-                    /* translation    */ Vector3f(0.0f, 0.0f, 0.0f),
-                    /* left rotation  */ AxisAngle4f(0.0f, 0.0f, 0.0f, 1.0f),
-                    /* scale          */ Vector3f(2.5f, 2.5f, 2.5f),
-                    /* right rotation */ AxisAngle4f(0.0f, 0.0f, 0.0f, 1.0f)
-                )
-                it.persistentDataContainer.set(DCLOCK_KEY, PersistentDataType.INTEGER, id)
-            }
-            digitEntities[id] = digit
-        }
-        override fun execute(sender: CommandSender, commandLabel: String, args: Array<out String>): Boolean {
-            val world = Bukkit.getWorld("world") ?: return false
-            val locations = mapOf(
-//                9 to Location(world, 5413.75, 458.5, 4984.0),
-                8 to Location(world, 5413.75, 458.5, 4985.0),
-                7 to Location(world, 5413.75, 458.5, 4987.0),
-                6 to Location(world, 5413.75, 458.5, 4989.0),
-                5 to Location(world, 5413.75, 458.5, 4991.0),
-                4 to Location(world, 5413.75, 458.5, 4993.0),
-                3 to Location(world, 5413.75, 458.5, 4995.0),
-                2 to Location(world, 5413.75, 458.5, 4997.0),
-                1 to Location(world, 5413.75, 458.5, 4999.0),
-                0 to Location(world, 5413.75, 458.5, 5001.0),
-            )
-            for ((i, location) in locations) {
-                if (digitEntities.containsKey(i)) {
-                    sender.sendMessage("Digit 1e$i already exists")
-                    continue
-                }
-                if (!location.chunk.isLoaded) {
-                    sender.sendMessage("Chunk not loaded")
-                    break
-                }
-                createEntity(location, i)
-            }
-            return true
-        }
-    })
+    override val commands: List<Command> = listOf() //dclockcommand
     override val listeners: List<Listener> = listOf(this)
-
-    val DCLOCK_KEY = NamespacedKey(SneakyMisc.getInstance(), "dclock-digit")
-    val DCLOCK_COLLECTION = "settings"
-    val DCLOCK_RECORD_ID = "9195r6z2omp337a"
-    val digitEntities = mutableMapOf<Int, ItemDisplay>()
-    var targetTimestamp = 1735189200000L
 
     fun createItem(digit: Char): ItemStack {
         val item = ItemStack(Material.CLAY_BALL)
@@ -125,66 +72,23 @@ class DClockModule(val logger: Logger): SneakyModule, Listener {
     init {
         val sneakyPB = SneakyPocketbase.getInstance()
         sneakyPB.onPocketbaseLoaded {
-            logger.info("Pocketbase loaded, subscribing to record")
-            sneakyPB.subscribeAsync("$DCLOCK_COLLECTION/$DCLOCK_RECORD_ID")
+            logger.info("Pocketbase loaded, subscribing to settings collection")
+            sneakyPB.subscribeAsync("settings")
             Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), PBRunnable {
-                val current = sneakyPB.pb().records.getOne<SettingRecord>(DCLOCK_COLLECTION, DCLOCK_RECORD_ID)
-                targetTimestamp = current.value * 1000
-                logger.info("Loaded target timestamp $targetTimestamp")
+                val current = sneakyPB.pb().records.getFullList<SettingRecord>("settings", 100)
+                // TODO: init clock cache
             })
         }
 
         Bukkit.getScheduler().scheduleSyncRepeatingTask(SneakyMisc.getInstance(), {
-            val now = System.currentTimeMillis()
-            if (now >= targetTimestamp) {
-                render("000000000")
-                return@scheduleSyncRepeatingTask
-            }
-            val diff = targetTimestamp - now
-            val seconds = diff / 1000
-            render(seconds.toString())
+            // TODO: fetch clock seconds and update displays
         }, 0, 20)
-    }
-
-    fun render(seconds: String) {
-        if (seconds.length > digitEntities.size) // render all nines
-            return render('9'.toString().repeat(digitEntities.size))
-        if (seconds.length < digitEntities.size) // pad with zeros
-            return render(seconds.padStart(digitEntities.size, '0'))
-        for ((index, itemDisplay) in digitEntities) {
-            val digit = digitEntities.size - index - 1
-            itemDisplay.setItemStack(digitItems[seconds[digit]] ?: digitItems['0'])
-        }
     }
 
     @EventHandler
     fun onPBUpdate(event: AsyncPocketbaseEvent) {
-        if (event.collectionName != DCLOCK_COLLECTION) return
+        if (event.collectionName != "settings") return
         val record = event.data.parseRecord<SettingRecord>(Json { ignoreUnknownKeys = true })
-        if (record.id != DCLOCK_RECORD_ID) return logger.warning("DClockModule: Received record with wrong ID: ${record.recordId}")
-
-        targetTimestamp = record.value * 1000
-        logger.fine("Updated dclock timestamp to $targetTimestamp")
-    }
-
-    @EventHandler
-    fun onEntityLoad(event: ChunkLoadEvent) {
-        val entities = event.chunk.entities
-        for (entity in entities) {
-            if (entity is ItemDisplay && entity.persistentDataContainer.has(DCLOCK_KEY, PersistentDataType.INTEGER)) {
-                val digitId = entity.persistentDataContainer.get(DCLOCK_KEY, PersistentDataType.INTEGER)!!
-                digitEntities[digitId] = entity
-            }
-        }
-    }
-    @EventHandler
-    fun onEntityUnload(event: ChunkUnloadEvent) {
-        val entities = event.chunk.entities
-        for (entity in entities) {
-            if (entity is ItemDisplay && entity.persistentDataContainer.has(DCLOCK_KEY, PersistentDataType.INTEGER)) {
-                val digitId = entity.persistentDataContainer.get(DCLOCK_KEY, PersistentDataType.INTEGER)!!
-                digitEntities.remove(digitId)
-            }
-        }
+        // TODO: check record id and update clock cache
     }
 }
