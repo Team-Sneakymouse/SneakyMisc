@@ -2,47 +2,76 @@ package com.danidipp.sneakymisc.leaderboards.commands
 
 import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
-import org.bukkit.command.Command
-import org.bukkit.command.CommandSender
+import com.mojang.brigadier.Command
+import com.mojang.brigadier.arguments.StringArgumentType
+import com.mojang.brigadier.builder.LiteralArgumentBuilder
+import com.mojang.brigadier.context.CommandContext
+import com.mojang.brigadier.suggestion.SuggestionProvider
+import com.mojang.brigadier.suggestion.SuggestionsBuilder
+import io.papermc.paper.command.brigadier.CommandSourceStack
+import io.papermc.paper.command.brigadier.Commands
 
-class LeaderboardDebugCommand(private val plugin: SneakyMisc, private val module: LeaderboardsModule) : Command("leaderboarddebug") {
-    init {
-        description = "Debug command for leaderboard cache"
-        usage = "/leaderboarddebug [leaderboard_name]"
-        permission = "sneakymisc.command.leaderboarddebug"
+class LeaderboardDebugCommand(
+    private val plugin: SneakyMisc,
+    private val module: LeaderboardsModule,
+) {
+    private val leaderboardSuggestions = SuggestionProvider<CommandSourceStack> { _, builder ->
+        suggest(module.leaderboards.keys.sorted(), builder)
     }
 
+    fun build(): LiteralArgumentBuilder<CommandSourceStack> =
+        Commands.literal("leaderboarddebug")
+            .requires { it.sender.hasPermission(PERMISSION) }
+            .executes(::showLeaderboardDebug)
+            .then(
+                Commands.argument("leaderboard_name", StringArgumentType.word())
+                    .suggests(leaderboardSuggestions)
+                    .executes(::showLeaderboardDebug)
+            )
 
-    override fun execute(sender: CommandSender, commandLabel: String, args: Array<out String>): Boolean {
+    private fun showLeaderboardDebug(context: CommandContext<CommandSourceStack>): Int {
         if (!plugin.isEnabled) {
-            sender.sendMessage("Plugin is disabled")
-            return true
+            return fail(context, "Plugin is disabled")
         }
 
-        val leaderboardName = args.getOrNull(0)
-
-        // No arguments: list available leaderboards
+        val leaderboardName = runCatching { StringArgumentType.getString(context, "leaderboard_name") }.getOrNull()
         if (leaderboardName == null) {
             if (module.leaderboards.isEmpty()) {
-                sender.sendMessage("No leaderboards configured")
-            } else {
-                sender.sendMessage("Available leaderboards: ${module.leaderboards.keys.joinToString(", ")}")
+                return success(context, "No leaderboards configured")
             }
-            return true
+            return success(context, "Available leaderboards: ${module.leaderboards.keys.joinToString(", ")}")
         }
 
-        // Valid leaderboard name: show cached entries
         val leaderboard = module.leaderboards[leaderboardName]
-        if (leaderboard == null) {
-            sender.sendMessage("Unknown leaderboard: $leaderboardName")
-            return true
-        }
+            ?: return fail(context, "Unknown leaderboard: $leaderboardName")
 
-        sender.sendMessage("$leaderboardName Cache Entries (${leaderboard.userCache.size}):")
+        context.source.sender.sendMessage("$leaderboardName Cache Entries (${leaderboard.userCache.size}):")
         val sortedEntries = leaderboard.userCache.values.sortedByDescending { it.value }.take(32)
         for (entry in sortedEntries) {
-            sender.sendMessage(" - ${entry.characterName}: ${entry.value}")
+            context.source.sender.sendMessage(" - ${entry.characterName}: ${entry.value}")
         }
-        return true
+        return Command.SINGLE_SUCCESS
+    }
+
+    private fun fail(context: CommandContext<CommandSourceStack>, message: String): Int {
+        context.source.sender.sendMessage(message)
+        return 0
+    }
+
+    private fun success(context: CommandContext<CommandSourceStack>, message: String): Int {
+        context.source.sender.sendMessage(message)
+        return Command.SINGLE_SUCCESS
+    }
+
+    private fun suggest(values: Iterable<String>, builder: SuggestionsBuilder) = builder.apply {
+        for (value in values) {
+            if (value.lowercase().startsWith(remainingLowerCase)) {
+                suggest(value)
+            }
+        }
+    }.buildFuture()
+
+    private companion object {
+        const val PERMISSION = "sneakymisc.command.leaderboarddebug"
     }
 }

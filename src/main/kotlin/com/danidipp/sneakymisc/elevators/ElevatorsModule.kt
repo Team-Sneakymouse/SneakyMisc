@@ -1,10 +1,12 @@
 package com.danidipp.sneakymisc.elevators
 
 import com.danidipp.sneakymisc.SneakyMisc
+import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
-import net.kyori.adventure.text.Component
-import org.bukkit.Location
-import org.bukkit.command.Command
+import com.danidipp.sneakymisc.elevators.commands.ElevatorCommandUtils
+import com.danidipp.sneakymisc.elevators.commands.ElevatorCommands
+import com.danidipp.sneakymisc.elevators.commands.ElevatorFloorCommands
+import io.papermc.paper.command.brigadier.Commands
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.configuration.serialization.ConfigurationSerialization
 import org.bukkit.event.Listener
@@ -14,10 +16,12 @@ import java.util.logging.Logger
 class ElevatorsModule(logger: Logger) : SneakyModule {
     companion object {
         lateinit var instance: ElevatorsModule
+        var deps = listOf<String>()
     }
-    override val commands: List<Command> get() = listOf(
-        ElevatorFloorCommand(this),
-        ElevatorCommand(this)
+    val commandUtils = ElevatorCommandUtils(this)
+    override val commands: List<SneakyMiscCommand> = listOf(
+        SneakyMiscCommand(ElevatorCommands(this, commandUtils).build(),"Manage elevators"),
+        SneakyMiscCommand(ElevatorFloorCommands(this, commandUtils).build(), "Manage elevator floors"),
     )
     override val listeners: List<Listener> get() = listOf(
         ElevatorFloor.listener(this),
@@ -47,7 +51,6 @@ class ElevatorsModule(logger: Logger) : SneakyModule {
         }
         logger.info("Loaded ${elevators.size} elevators")
     }
-
 
     fun saveConfig() {
         val elevatorSections = config.createSection("elevators")
@@ -83,12 +86,12 @@ class ElevatorsModule(logger: Logger) : SneakyModule {
         return getElevator(elevatorName)?.getFloor(floorId)
     }
 
-//    fun update(elevator: ElevatorFloor, location: Location): ElevatorFloor {
+//    fun update(elevator: ElevatorFloor, location: org.bukkit.Location): ElevatorFloor {
 //        elevator.location = location
 //        saveConfig()
 //        return elevator
 //    }
-//    fun update(name: String, location: Location): ElevatorFloor? {
+//    fun update(name: String, location: org.bukkit.Location): ElevatorFloor? {
 //        val elevator = elevators.find { it.floor == name } ?: return null
 //        update(elevator, location)
 //        return elevator

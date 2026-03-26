@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.databasesync
 
 import com.danidipp.sneakymisc.SneakyMisc
+import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakypocketbase.PBRunnable
 import com.danidipp.sneakypocketbase.SneakyPocketbase
@@ -13,14 +14,11 @@ import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import java.util.logging.Logger
 
-class DBSyncModule(val logger: Logger) : SneakyModule {
-    override val commands: List<Command> = listOf()
+class DBSyncModule(val logger: Logger) : SneakyModule{
+    companion object { val deps = listOf<String>("SneakyPocketbase") }
+    override val commands: List<SneakyMiscCommand> = listOf()
     override val listeners: List<Listener>
         get() {
-            if (!Bukkit.getPluginManager().isPluginEnabled("SneakyPocketbase")) {
-                return emptyList()
-            }
-
             val listeners = mutableListOf<Listener>(object : Listener {
                 @EventHandler
                 fun onPlayerJoin(event: PlayerJoinEvent) {

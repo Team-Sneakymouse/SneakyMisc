@@ -1,7 +1,8 @@
 package com.danidipp.sneakymisc.metaoverlayhelper
 
+import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
-import net.sneakycharactermanager.paper.handlers.character.Character
+import com.danidipp.sneakymisc.metaoverlayhelper.commands.MetaOverlayHelperCommand
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Marker
@@ -10,13 +11,10 @@ import org.apache.logging.log4j.core.LogEvent
 import org.apache.logging.log4j.core.Logger
 import org.apache.logging.log4j.core.filter.AbstractFilter
 import org.apache.logging.log4j.message.Message
-import org.bukkit.Bukkit
-import org.bukkit.command.Command
-import org.bukkit.command.CommandSender
 import org.bukkit.event.Listener
-import java.util.UUID
 
 class MetaOverlayHelper(logger: java.util.logging.Logger): SneakyModule {
+    companion object { val deps = listOf<String>("SneakyCharacterManager") }
     init {
         try {
             val log4j = LogManager.getRootLogger() as org.apache.logging.log4j.core.Logger
@@ -43,35 +41,8 @@ class MetaOverlayHelper(logger: java.util.logging.Logger): SneakyModule {
             logger.warning("Failed to get log4j logger")
         }
     }
-    override val commands: List<Command> = listOf(object: Command("metaoverlayhelper") {
-        val RESPONSE_PREFIX = "[MetaOverlayHelper] "
-        init {
-            description = "Meta Overlay Helper command"
-            usageMessage = "/metaoverlayhelper charid <uuid>"
-            permission = "sneakymisc.metaoverlayhelper"
-        }
-        override fun execute(sender: CommandSender, commandLabel: String, args: Array<out String>): Boolean {
-            if (!Bukkit.getPluginManager().isPluginEnabled("SneakyCharacterManager")) {
-                sender.sendMessage(RESPONSE_PREFIX + "SneakyCharacterManager plugin is not enabled")
-                return true
-            }
-            if(args.size < 2) return false
-            when (args[0]) {
-                "charid" -> {
-                    val player = Bukkit.getPlayer(UUID.fromString(args[1])) ?: run {
-                        sender.sendMessage(RESPONSE_PREFIX + "Player not found")
-                        return true
-                    }
-                    val character = Character.get(player) ?: run {
-                        sender.sendMessage(RESPONSE_PREFIX + "Character not found")
-                        return true
-                    }
-                    sender.sendMessage(RESPONSE_PREFIX + character.characterUUID)
-                    return true
-                }
-                else -> return false
-            }
-        }
-    })
+    override val commands: List<SneakyMiscCommand> = listOf(
+        SneakyMiscCommand(MetaOverlayHelperCommand().build(), "Meta Overlay Helper command")
+    )
     override val listeners: List<Listener> = listOf()
 }

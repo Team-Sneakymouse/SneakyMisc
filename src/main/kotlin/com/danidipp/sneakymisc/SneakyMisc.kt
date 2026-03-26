@@ -7,37 +7,34 @@ import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
 import com.danidipp.sneakymisc.metaoverlayhelper.MetaOverlayHelper
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 
 class SneakyMisc : JavaPlugin() {
+    private val modules = mutableListOf<SneakyModule>()
 
     override fun onLoad() {
         instance = this
     }
     override fun onEnable() {
-        registerModule(ElevatorsModule(logger))
-        registerModule(MetaOverlayHelper(logger))
-        registerModule(CloseInventoryModule())
-
-        if (Bukkit.getPluginManager().isPluginEnabled("SneakyPocketbase")) {
-            registerModule(DBSyncModule(logger))
-            registerModule(DClockModule(logger))
-            registerModule(RegistrationModule(logger))
-        } else {
-            logger.warning("SneakyPocketbase not found, skipping DBSync and DClock modules")
-        }
-
-        if (Bukkit.getPluginManager().isPluginEnabled("SneakyCharacterManager") && Bukkit.getPluginManager().isPluginEnabled("MagicSpells")) {
-            registerModule(LeaderboardsModule(this))
-        } else {
-            logger.warning("SneakyCharacterManager or MagicSpells not found, skipping Leaderboards module")
-        }
+        if (dependenciesAvailable(ElevatorsModule.deps))        registerModule(ElevatorsModule(logger))
+        if (dependenciesAvailable(MetaOverlayHelper.deps))      registerModule(MetaOverlayHelper(logger))
+        if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
+        if (dependenciesAvailable(DBSyncModule.deps))           registerModule(DBSyncModule(logger))
+        if (dependenciesAvailable(RegistrationModule.deps))     registerModule(RegistrationModule(logger))
+        if (dependenciesAvailable(DClockModule.deps))           registerModule(DClockModule(logger))
+        if (dependenciesAvailable(LeaderboardsModule.deps))     registerModule(LeaderboardsModule(this))
     }
-
+    private fun dependenciesAvailable(dependencies: List<String>) = dependencies.all { Bukkit.getPluginManager().isPluginEnabled(it) }
     private fun registerModule(module: SneakyModule) {
+        modules.add(module)
         logger.info("Registering module ${module.javaClass.name} with ${module.commands.size} commands and ${module.listeners.size} listeners")
-        Bukkit.getServer().commandMap.registerAll(IDENTIFIER, module.commands)
+
+        lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
+            for (command in module.commands) event.registrar().register(command.node, command.description)
+        }
+
         for (listener in module.listeners) {
             Bukkit.getServer().pluginManager.registerEvents(listener, this)
         }

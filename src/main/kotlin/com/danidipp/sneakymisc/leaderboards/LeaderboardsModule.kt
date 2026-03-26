@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.leaderboards
 
 import com.danidipp.sneakymisc.SneakyMisc
+import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.leaderboards.commands.LeaderboardDebugCommand
 import com.nisovin.magicspells.MagicSpells
@@ -8,7 +9,6 @@ import com.nisovin.magicspells.events.MagicSpellsLoadedEvent
 import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
 import net.sneakycharactermanager.paper.handlers.character.Character
 import org.bukkit.Bukkit
-import org.bukkit.command.Command
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import java.io.File
@@ -19,13 +19,14 @@ import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
 import com.danidipp.sneakypocketbase.SneakyPocketbase
 
 class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule {
+    companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells") }
     val leaderboards = mutableMapOf<String, Leaderboard>()
     val HALF_MINUTE = 20L * 30L
     
     private val db = LeaderboardDB(plugin.logger)
 
-    override val commands: List<Command> = listOf(
-        LeaderboardDebugCommand(plugin, this)
+    override val commands: List<SneakyMiscCommand> = listOf(
+        SneakyMiscCommand(LeaderboardDebugCommand(plugin, this).build().build(), "Debug command for leaderboard cache")
     )
     override val listeners: List<Listener> = listOf(object: Listener {
         @EventHandler

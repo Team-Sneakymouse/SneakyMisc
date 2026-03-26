@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.dvzregistrations
 
 import com.danidipp.sneakymisc.SneakyMisc
+import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.databasesync.AccountRecord
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
@@ -27,7 +28,8 @@ import java.util.UUID
 import java.util.logging.Logger
 
 class RegistrationModule(logger: Logger): SneakyModule {
-    override val commands = listOf<Command>()
+    companion object { val deps = listOf<String>("SneakyPocketbase") }
+    override val commands = listOf<SneakyMiscCommand>()
     override val listeners = mutableListOf<Listener>()
 
     init {
