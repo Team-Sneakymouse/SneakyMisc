@@ -22,3 +22,6 @@ dependencies:
     SneakyMail:
       load: BEFORE
       required: true
+    SneakyCellPhones:
+      load: BEFORE
+      required: false
