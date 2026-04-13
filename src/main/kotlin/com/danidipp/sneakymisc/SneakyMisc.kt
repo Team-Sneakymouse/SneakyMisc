@@ -5,9 +5,11 @@ import com.danidipp.sneakymisc.databasesync.DBSyncModule
 import com.danidipp.sneakymisc.dclock.DClockModule
 import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
+import com.danidipp.sneakymisc.grounditems.GroundItemsModule
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
 import com.danidipp.sneakymisc.lomarchive.LomArchiveModule
 import com.danidipp.sneakymisc.metaoverlayhelper.MetaOverlayHelper
+import com.danidipp.sneakymisc.nophysics.NoPhysicsModule
 import com.danidipp.sneakymisc.phonebook.PhonebookModule
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
@@ -27,9 +29,11 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(RegistrationModule.deps))     registerModule(RegistrationModule(logger))
         if (dependenciesAvailable(DClockModule.deps))           registerModule(DClockModule(logger))
         if (dependenciesAvailable(LeaderboardsModule.deps))     registerModule(LeaderboardsModule(this))
+        if (dependenciesAvailable(GroundItemsModule.deps))      registerModule(GroundItemsModule())
         if (dependenciesAvailable(LomArchiveModule.deps))
             if (Bukkit.getWorld("lom_archive") != null)  registerModule(LomArchiveModule(logger, "lom_archive"))
-        if (dependenciesAvailable(PhonebookModule.deps))        registerModule(PhonebookModule(logger))
+//        if (dependenciesAvailable(PhonebookModule.deps))        registerModule(PhonebookModule(logger))
+//        if (dependenciesAvailable(NoPhysicsModule.deps))        registerModule(NoPhysicsModule())
     }
     private fun dependenciesAvailable(dependencies: List<String>) = dependencies.all { Bukkit.getPluginManager().isPluginEnabled(it) }
     private fun registerModule(module: SneakyModule) {
