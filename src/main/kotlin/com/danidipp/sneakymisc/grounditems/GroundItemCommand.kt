@@ -137,7 +137,7 @@ class GroundItemCommand(
     private fun popRaycast(context: CommandContext<CommandSourceStack>, radius: Double): Int {
         val player = context.source.sender as? Player ?: return 0
         val center = module.findPopLocation(player) ?: return Command.SINGLE_SUCCESS
-        module.popGroundItems(center, radius, player.name)
+        module.popGroundItems(center, radius)
         return Command.SINGLE_SUCCESS
     }
 
@@ -154,7 +154,7 @@ class GroundItemCommand(
             this.y = y
             this.z = z
         }
-        module.popGroundItems(center, radius, player.name)
+        module.popGroundItems(center, radius)
         return Command.SINGLE_SUCCESS
     }
 

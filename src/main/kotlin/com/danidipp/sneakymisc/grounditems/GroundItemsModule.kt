@@ -240,10 +240,10 @@ class GroundItemsModule : SneakyModule, Listener {
         return result.hitPosition?.toLocation(player.world)
     }
 
-    fun popGroundItems(center: Location, radius: Double, actorName: String): Int {
+    fun popGroundItems(center: Location, radius: Double): Int {
         val targets = collectPopTargets(center, radius)
         for (target in targets) {
-            popGroundItem(target, actorName)
+            popGroundItem(target)
         }
         return targets.size
     }
@@ -462,12 +462,11 @@ class GroundItemsModule : SneakyModule, Listener {
         return targets
     }
 
-    private fun popGroundItem(target: GroundItemTarget, actorName: String) {
+    private fun popGroundItem(target: GroundItemTarget) {
         val stack = target.display.itemStack.clone()
         val dropLocation = target.display.location.clone()
         removePair(target.display, target.interaction)
         spawnVanillaDrop(dropLocation, stack)
-        logCoreProtectDrop(actorName, dropLocation, stack)
     }
 
     private fun spawnVanillaDrop(location: Location, stack: ItemStack) {
@@ -603,12 +602,8 @@ class GroundItemsModule : SneakyModule, Listener {
     }
 
     private fun logCoreProtectDrop(player: Player, location: Location, stack: ItemStack) {
-        logCoreProtectDrop(player.name, location, stack)
-    }
-
-    private fun logCoreProtectDrop(playerName: String, location: Location, stack: ItemStack) {
         if (coreProtectApi == null) return
-        PlayerDropItemListener.playerDropItem(location, playerName, stack)
+        PlayerDropItemListener.playerDropItem(location, player.name, stack)
     }
 
     private fun logCoreProtectPickup(player: Player, location: Location, stack: ItemStack) {
