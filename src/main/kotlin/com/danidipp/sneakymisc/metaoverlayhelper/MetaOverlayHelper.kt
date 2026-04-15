@@ -11,13 +11,12 @@ import org.apache.logging.log4j.core.LogEvent
 import org.apache.logging.log4j.core.Logger
 import org.apache.logging.log4j.core.filter.AbstractFilter
 import org.apache.logging.log4j.message.Message
-import org.bukkit.event.Listener
 
-class MetaOverlayHelper(logger: java.util.logging.Logger): SneakyModule {
+class MetaOverlayHelper(logger: java.util.logging.Logger): SneakyModule() {
     companion object { val deps = listOf<String>("SneakyCharacterManager") }
     init {
         try {
-            val log4j = LogManager.getRootLogger() as org.apache.logging.log4j.core.Logger
+            val log4j = LogManager.getRootLogger() as Logger
             log4j.addFilter(object: AbstractFilter() {
                 fun validateMessage(message: String?): Filter.Result {
                     if (message == null) return Filter.Result.NEUTRAL
@@ -44,5 +43,4 @@ class MetaOverlayHelper(logger: java.util.logging.Logger): SneakyModule {
     override val commands: List<SneakyMiscCommand> = listOf(
         SneakyMiscCommand(MetaOverlayHelperCommand().build(), "Meta Overlay Helper command")
     )
-    override val listeners: List<Listener> = listOf()
 }

@@ -1,7 +1,8 @@
 name: SneakyMisc
 version: "1.0"
 main: com.danidipp.sneakymisc.SneakyMisc
-api-version: "1.20"
+bootstrapper: com.danidipp.sneakymisc.SneakyMiscBootstrap
+api-version: "1.21"
 authors:
   - DaniDipp
 description: "Paper plugin for Lords of Minecraft mechanics that don't justify having a plugin of their own"

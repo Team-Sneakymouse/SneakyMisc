@@ -29,6 +29,8 @@ dependencies {
 	compileOnly(files("C:\\Users\\DaniDipp\\Downloads\\1.20\\CoreProtect-22.1.jar"))
 	compileOnly(files("C:\\Users\\DaniDipp\\Downloads\\1.21.4\\SneakyPocketbase-1.0.jar"))
 	compileOnly(fileTree("libs") { include("*.jar") })
+	testImplementation(kotlin("test"))
+	testImplementation("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
 }
 
 tasks.jar {
@@ -37,6 +39,10 @@ tasks.jar {
 	}
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+}
+
+tasks.test {
+	useJUnitPlatform()
 }
 
 configure<JavaPluginExtension> {

@@ -14,9 +14,8 @@ import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import java.util.logging.Logger
 
-class DBSyncModule(val logger: Logger) : SneakyModule{
+class DBSyncModule(val logger: Logger) : SneakyModule() {
     companion object { val deps = listOf<String>("SneakyPocketbase") }
-    override val commands: List<SneakyMiscCommand> = listOf()
     override val listeners: List<Listener>
         get() {
             val listeners = mutableListOf<Listener>(object : Listener {

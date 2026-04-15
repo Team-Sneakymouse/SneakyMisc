@@ -38,7 +38,7 @@ data class DeleteResult(
     val orphaned: Int,
 )
 
-class DClockModule(private val logger: Logger) : SneakyModule, Listener {
+class DClockModule(private val logger: Logger) : SneakyModule(), Listener {
     companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells") }
     sealed interface SetOvertimeBehaviorResult {
         data object NotFound : SetOvertimeBehaviorResult

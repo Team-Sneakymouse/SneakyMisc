@@ -18,7 +18,7 @@ import java.time.ZoneId
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
 import com.danidipp.sneakypocketbase.SneakyPocketbase
 
-class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule {
+class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
     companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells") }
     val leaderboards = mutableMapOf<String, Leaderboard>()
     val HALF_MINUTE = 20L * 30L

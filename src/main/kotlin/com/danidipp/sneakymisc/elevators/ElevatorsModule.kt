@@ -13,7 +13,7 @@ import org.bukkit.event.Listener
 import java.io.File
 import java.util.logging.Logger
 
-class ElevatorsModule(logger: Logger) : SneakyModule {
+class ElevatorsModule(logger: Logger) : SneakyModule() {
     companion object {
         lateinit var instance: ElevatorsModule
         var deps = listOf<String>()

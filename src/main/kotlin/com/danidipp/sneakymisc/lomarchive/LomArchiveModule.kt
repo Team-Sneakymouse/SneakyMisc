@@ -29,7 +29,7 @@ import java.util.logging.Logger
 class LomArchiveModule(
     private val logger: Logger,
     private val archiveWorldName: String,
-) : SneakyModule, Listener {
+) : SneakyModule(), Listener {
     companion object {
         val deps = listOf("SneakyCharacterManager", "MagicSpells")
 
@@ -41,7 +41,6 @@ class LomArchiveModule(
     private val magicItemKey = NamespacedKey.fromString("magicspells:magicitem")
         ?: throw IllegalStateException("Failed to create NamespacedKey for magic items")
 
-    override val commands: List<SneakyMiscCommand> = emptyList()
     override val listeners: List<Listener> = listOf(this)
 
     @EventHandler

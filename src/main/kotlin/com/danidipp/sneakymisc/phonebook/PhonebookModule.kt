@@ -27,7 +27,7 @@ import java.util.logging.Logger
 
 class PhonebookModule(
     private val logger: Logger,
-) : SneakyModule {
+) : SneakyModule() {
     companion object {
         val deps = listOf("SneakyCharacterManager", "SneakyCellPhones")
         private val CONTACT_SLOTS = (0 until 54).filter { it % 9 != 8 } // 9th column reserved for ui

@@ -7,6 +7,7 @@ import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.math.BlockVector3
 import com.sk89q.worldguard.WorldGuard
 import com.sk89q.worldguard.bukkit.WorldGuardPlugin
+import io.papermc.paper.datacomponent.DataComponentTypes
 import net.coreprotect.CoreProtect
 import net.coreprotect.CoreProtectAPI
 import net.coreprotect.listener.entity.EntityPickupItemListener
@@ -29,6 +30,7 @@ import org.bukkit.block.BlockFace
 import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
+import org.bukkit.entity.Item
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -49,11 +51,11 @@ import java.time.ZoneId
 import java.util.concurrent.ThreadLocalRandom
 import java.util.UUID
 
-class GroundItemsModule : SneakyModule, Listener {
+class GroundItemsModule : SneakyModule(), Listener {
     companion object {
         val deps = listOf<String>()
 
-        private const val MAX_DISTANCE = 5.0
+        private const val MAX_DISTANCE = 2.5
         private const val POP_RAYCAST_DISTANCE = 8.0
         private const val SURFACE_EPSILON = 0.02
         private const val SURFACE_RANDOM_OFFSET = 0.01

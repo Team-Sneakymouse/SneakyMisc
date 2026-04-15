@@ -27,9 +27,8 @@ import org.bukkit.event.player.AsyncPlayerPreLoginEvent
 import java.util.UUID
 import java.util.logging.Logger
 
-class RegistrationModule(logger: Logger): SneakyModule {
+class RegistrationModule(logger: Logger): SneakyModule() {
     companion object { val deps = listOf<String>("SneakyPocketbase") }
-    override val commands = listOf<SneakyMiscCommand>()
     override val listeners = mutableListOf<Listener>()
 
     init {
