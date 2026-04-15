@@ -2,13 +2,13 @@ package com.danidipp.sneakymisc.paintings
 
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.IntegerArgumentType
-import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
 import com.mojang.brigadier.suggestion.SuggestionProvider
 import com.mojang.brigadier.suggestion.SuggestionsBuilder
 import com.mojang.brigadier.tree.LiteralCommandNode
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
+import io.papermc.paper.command.brigadier.argument.ArgumentTypes
 import io.papermc.paper.registry.RegistryAccess
 import io.papermc.paper.registry.RegistryKey
 import org.bukkit.Bukkit
@@ -36,7 +36,7 @@ class PaintingsCommand {
                 Commands.literal("get")
                     .requires { it.sender.hasPermission(GET_PERMISSION) }
                     .then(
-                        Commands.argument("painting_id", StringArgumentType.word())
+                        Commands.argument("painting_id", ArgumentTypes.namespacedKey())
                             .suggests(paintingSuggestions)
                             .executes { givePainting(it, 1) }
                             .then(
@@ -61,9 +61,8 @@ class PaintingsCommand {
 
     private fun givePainting(context: CommandContext<CommandSourceStack>, amount: Int): Int {
         val player = context.source.sender as? Player ?: return fail(context, "Only players can use /paintings get")
-        val paintingId = StringArgumentType.getString(context, "painting_id")
-        val paintingKey = NamespacedKey.fromString(paintingId)
-            ?: return fail(context, "Invalid painting id '$paintingId'")
+        val paintingKey = context.getArgument("painting_id", NamespacedKey::class.java)
+        val paintingId = paintingKey.asString()
         if (paintingKey.namespace == NamespacedKey.MINECRAFT) {
             return fail(context, "Painting '$paintingId' is in the minecraft namespace and is not available through this command")
         }
