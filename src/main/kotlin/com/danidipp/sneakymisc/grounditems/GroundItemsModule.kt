@@ -99,6 +99,7 @@ class GroundItemsModule : SneakyModule(), Listener {
     private val lockZone = ZoneId.of("UTC-07:00")
     private val lastGroundItemCreationByPlayer = mutableMapOf<UUID, Long>()
     private val lastFeedbackSoundByPlayer = mutableMapOf<UUID, Long>()
+    private val pendingPickupPairIds = mutableSetOf<String>()
     private val coreProtectApi: CoreProtectAPI? by lazy {
         val plugin = Bukkit.getPluginManager().getPlugin("CoreProtect") as? CoreProtect ?: return@lazy null
         plugin.api?.takeIf { it.isEnabled }
@@ -159,6 +160,7 @@ class GroundItemsModule : SneakyModule(), Listener {
         val player = event.damager as? Player ?: return
         val interaction = event.entity as? Interaction ?: return
         if (!hasKind(interaction, KIND_INTERACTION)) return
+        event.isCancelled = true
 
         val target = resolveGroundItemTarget(interaction) ?: run {
             interaction.remove()
@@ -169,25 +171,46 @@ class GroundItemsModule : SneakyModule(), Listener {
             return
         }
         if (!isPickupAllowed(player.uniqueId, target.display)) return
+        if (!tryReservePickup(target.pairId)) return
+
+        target.interaction.isResponsive = false
+
+        val pairId = target.pairId
+        val playerUuid = player.uniqueId
+        val displayUuid = target.display.uniqueId
+        val interactionUuid = target.interaction.uniqueId
 
         Bukkit.getScheduler().runTask(plugin, Runnable {
-            val stack = target.display.itemStack.clone()
-            val pickupLocation = target.display.location.clone()
-            removePair(target.display, target.interaction)
+            try {
+                val display = resolveDisplay(displayUuid)
+                val targetInteraction = resolveInteraction(interactionUuid)
 
-            val onlinePlayer = Bukkit.getPlayer(player.uniqueId)
-            if (onlinePlayer == null || !onlinePlayer.isOnline) {
-                pickupLocation.world.dropItemNaturally(pickupLocation, stack)
-                return@Runnable
+                if (display == null || targetInteraction == null) {
+                    display?.remove()
+                    targetInteraction?.remove()
+                    return@Runnable
+                }
+
+                val stack = display.itemStack.clone()
+                val pickupLocation = display.location.clone()
+                removePair(display, targetInteraction)
+
+                val onlinePlayer = Bukkit.getPlayer(playerUuid)
+                if (onlinePlayer == null || !onlinePlayer.isOnline) {
+                    pickupLocation.world.dropItemNaturally(pickupLocation, stack)
+                    return@Runnable
+                }
+
+                val overflow = giveCollectedItem(onlinePlayer, stack)
+                for (item in overflow) {
+                    onlinePlayer.world.dropItemNaturally(onlinePlayer.location, item)
+                }
+
+                playGroundItemFeedback(onlinePlayer.uniqueId, pickupLocation, "lom:sfx.clothingunequip")
+                logCoreProtectPickup(onlinePlayer, pickupLocation, stack)
+            } finally {
+                releasePickupReservation(pairId)
             }
-
-            val overflow = giveCollectedItem(onlinePlayer, stack)
-            for (item in overflow) {
-                onlinePlayer.world.dropItemNaturally(onlinePlayer.location, item)
-            }
-
-            playGroundItemFeedback(onlinePlayer.uniqueId, pickupLocation, "lom:sfx.clothingunequip")
-            logCoreProtectPickup(onlinePlayer, pickupLocation, stack)
         })
     }
 
@@ -219,7 +242,9 @@ class GroundItemsModule : SneakyModule(), Listener {
             MAX_DISTANCE,
             RAYTRACE_SIZE
         ) { entity ->
-            entity is Interaction && hasKind(entity, KIND_INTERACTION)
+            entity is Interaction &&
+                hasKind(entity, KIND_INTERACTION) &&
+                !isPickupPending(getPairId(entity))
         } ?: return null
 
         return result.hitEntity as? Interaction
@@ -454,6 +479,7 @@ class GroundItemsModule : SneakyModule(), Listener {
                 entity.remove()
                 continue
             }
+            if (isPickupPending(target.pairId)) continue
             if (getLockMode(target) != LockMode.NONE) continue
             if (target.display.location.world != world) continue
             if (target.display.location.distanceSquared(center) > radiusSquared) continue
@@ -574,6 +600,18 @@ class GroundItemsModule : SneakyModule(), Listener {
         return now - lastCreatedAt >= SOUND_COOLDOWN_MS
     }
 
+    private fun tryReservePickup(pairId: String): Boolean {
+        return pendingPickupPairIds.add(pairId)
+    }
+
+    private fun releasePickupReservation(pairId: String) {
+        pendingPickupPairIds.remove(pairId)
+    }
+
+    private fun isPickupPending(pairId: String?): Boolean {
+        return pairId != null && pairId in pendingPickupPairIds
+    }
+
     private fun isMagicSpellsDropEvent(): Boolean {
         return Thread.currentThread().stackTrace.any { element ->
             element.className.startsWith("com.nisovin.magicspells")
@@ -675,6 +713,14 @@ class GroundItemsModule : SneakyModule(), Listener {
         val partnerUuid = runCatching { UUID.fromString(partnerId) }.getOrNull() ?: return null
         val partner = Bukkit.getEntity(partnerUuid) ?: return null
         return partner.takeIf { hasKind(it, expectedKind) }
+    }
+
+    private fun resolveDisplay(uuid: UUID): ItemDisplay? {
+        return Bukkit.getEntity(uuid) as? ItemDisplay
+    }
+
+    private fun resolveInteraction(uuid: UUID): Interaction? {
+        return Bukkit.getEntity(uuid) as? Interaction
     }
 
     private fun removePair(display: ItemDisplay, interaction: Interaction) {
