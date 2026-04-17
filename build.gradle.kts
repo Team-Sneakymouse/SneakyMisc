@@ -25,8 +25,6 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
 	compileOnly("org.apache.logging.log4j:log4j-core:2.24.3")
 	compileOnly("me.clip:placeholderapi:2.11.6")
-	compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.13")
-	compileOnly(files("C:\\Users\\DaniDipp\\Downloads\\1.20\\CoreProtect-22.1.jar"))
 	compileOnly(files("C:\\Users\\DaniDipp\\Downloads\\1.21.4\\SneakyPocketbase-1.0.jar"))
 	compileOnly(fileTree("libs") { include("*.jar") })
 	testImplementation(kotlin("test"))

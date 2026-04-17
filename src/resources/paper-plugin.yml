@@ -27,9 +27,3 @@ dependencies:
     SneakyCellPhones:
       load: BEFORE
       required: false
-    WorldGuard:
-      load: BEFORE
-      required: false
-    CoreProtect:
-      load: BEFORE
-      required: false
