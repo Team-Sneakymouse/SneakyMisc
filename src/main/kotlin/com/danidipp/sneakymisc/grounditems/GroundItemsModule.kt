@@ -59,9 +59,10 @@ class GroundItemsModule : SneakyModule(), Listener {
         private const val POP_RAYCAST_DISTANCE = 8.0
         private const val SURFACE_EPSILON = 0.02
         private const val SURFACE_RANDOM_OFFSET = 0.01
-        private const val INTERACTION_SIZE = 0.5f
         private const val RAYTRACE_SIZE = 0.25
         private const val SOUND_COOLDOWN_MS = 500L
+        private const val DEFAULT_GROUND_ITEM_MIN_SCALE = 0.5f
+        private const val DEFAULT_GROUND_ITEM_MAX_SCALE = 2.0f
 
         private const val KIND_DISPLAY = "display"
         private const val KIND_INTERACTION = "interaction"
@@ -92,10 +93,15 @@ class GroundItemsModule : SneakyModule(), Listener {
     private val kindKey = NamespacedKey(plugin, "ground_item_kind")
     private val pairIdKey = NamespacedKey(plugin, "ground_item_pair_id")
     private val partnerUuidKey = NamespacedKey(plugin, "ground_item_partner_uuid")
+    private val faceKey = NamespacedKey(plugin, "ground_item_face")
     private val permanentLockModeKey = NamespacedKey(plugin, "ground_item_lock_mode")
     private val temporaryLockDateKey = NamespacedKey(plugin, "ground_item_temporary_lock_date")
     private val soulboundOwnerKey = NamespacedKey.fromString("magicspells:soulbound_owner")
         ?: throw IllegalStateException("Failed to create NamespacedKey for magicspells:soulbound_owner")
+    private val groundItemMinScaleKey = NamespacedKey.fromString("magicspells:magicspellpermanentdata_grounditem_min_scale")
+        ?: throw IllegalStateException("Failed to create NamespacedKey for magicspells:magicspellpermanentdata_grounditem_min_scale")
+    private val groundItemMaxScaleKey = NamespacedKey.fromString("magicspells:magicspellpermanentdata_grounditem_max_scale")
+        ?: throw IllegalStateException("Failed to create NamespacedKey for magicspells:magicspellpermanentdata_grounditem_max_scale")
     private val lockZone = ZoneId.of("UTC-07:00")
     private val lastGroundItemCreationByPlayer = mutableMapOf<UUID, Long>()
     private val lastFeedbackSoundByPlayer = mutableMapOf<UUID, Long>()
@@ -229,7 +235,7 @@ class GroundItemsModule : SneakyModule(), Listener {
     fun onPlayerPickItem(event: PlayerPickItemEvent) {
         if (event.player.gameMode != GameMode.CREATIVE) return
 
-        val target = findLookedAtGroundItem(event.player) ?: return
+        val target = findPreciselyLookedAtGroundItem(event.player) ?: return
         event.isCancelled = true
         event.player.inventory.setItem(event.targetSlot, target.display.itemStack.clone())
         event.player.inventory.heldItemSlot = event.targetSlot
@@ -250,9 +256,35 @@ class GroundItemsModule : SneakyModule(), Listener {
         return result.hitEntity as? Interaction
     }
 
-    fun findLookedAtGroundItem(player: Player): GroundItemTarget? {
-        val interaction = findLookedAtInteraction(player) ?: return null
-        return resolveGroundItemTarget(interaction)
+    private fun findPreciselyLookedAtGroundItem(player: Player): GroundItemTarget? {
+        val eyeLocation = player.eyeLocation
+        val entityResult = player.world.rayTraceEntities(
+            eyeLocation,
+            eyeLocation.direction,
+            MAX_DISTANCE,
+            0.0
+        ) { entity ->
+            entity is Interaction &&
+                hasKind(entity, KIND_INTERACTION) &&
+                !isPickupPending(getPairId(entity))
+        } ?: return null
+
+        val hitPosition = entityResult.hitPosition ?: return null
+        val hitInteraction = entityResult.hitEntity as? Interaction ?: return null
+        val blockResult = player.world.rayTraceBlocks(
+            eyeLocation,
+            eyeLocation.direction,
+            MAX_DISTANCE,
+            FluidCollisionMode.NEVER,
+            true
+        )
+
+        val eyeVector = eyeLocation.toVector()
+        val entityDistanceSquared = hitPosition.distanceSquared(eyeVector)
+        val blockDistanceSquared = blockResult?.hitPosition?.distanceSquared(eyeVector)
+        if (blockDistanceSquared != null && blockDistanceSquared <= entityDistanceSquared) return null
+
+        return resolveGroundItemTarget(hitInteraction)
     }
 
     fun findPopLocation(player: Player): Location? {
@@ -389,8 +421,8 @@ class GroundItemsModule : SneakyModule(), Listener {
                 target.isPersistent = true
                 target.setGravity(false)
                 target.isResponsive = true
-                target.interactionWidth = INTERACTION_SIZE
-                target.interactionHeight = INTERACTION_SIZE
+                target.interactionWidth = placement.interactionScale
+                target.interactionHeight = placement.interactionScale
                 tagEntity(target, KIND_INTERACTION, pairId, "")
             }
 
@@ -399,6 +431,8 @@ class GroundItemsModule : SneakyModule(), Listener {
 
             setPartner(spawnedDisplay, spawnedInteraction.uniqueId)
             setPartner(spawnedInteraction, spawnedDisplay.uniqueId)
+            setFace(spawnedDisplay, placement.face)
+            setFace(spawnedInteraction, placement.face)
             true
         }.getOrElse {
             display?.remove()
@@ -409,14 +443,18 @@ class GroundItemsModule : SneakyModule(), Listener {
 
     private fun buildPlacement(playerYaw: Float, hitPosition: Location, hitFace: BlockFace, stack: ItemStack): Placement {
         val normal = hitFace.direction.clone().normalize()
+        val stackScale = scaleForStack(stack)
         val randomOffset = ThreadLocalRandom.current().nextDouble(0.0, SURFACE_RANDOM_OFFSET)
         val anchor = hitPosition.clone()
             .add(normal.clone().multiply(SURFACE_EPSILON))
             .add(normal.clone().multiply(randomOffset))
+        val interactionLocation = anchor.clone().add(normal.clone().multiply(interactionNormalOffset(stackScale).toDouble()))
         return Placement(
             location = anchor,
-            interactionLocation = anchor.clone(),
-            transformation = transformationForFace(hitFace, playerYaw, scaleForStack(stack))
+            interactionLocation = interactionLocation,
+            interactionScale = stackScale,
+            transformation = transformationForFace(hitFace, playerYaw, stackScale),
+            face = hitFace
         )
     }
 
@@ -433,8 +471,10 @@ class GroundItemsModule : SneakyModule(), Listener {
 
         val mergeAmount = minOf(spaceLeft, droppedStack.amount)
         currentStack.amount += mergeAmount
+        val newScale = scaleForStack(currentStack)
         mergeTarget.setItemStack(currentStack)
-        mergeTarget.transformation = rescaleTransformation(mergeTarget.transformation, scaleForStack(currentStack))
+        mergeTarget.transformation = rescaleTransformation(mergeTarget.transformation, newScale)
+        updateInteractionForDisplayScale(mergeTarget, newScale)
         playGroundItemFeedback(event.player.uniqueId, mergeTarget.location, "lom:sfx.clothingequip")
         logCoreProtectDrop(event.player, mergeTarget.location, droppedStack.clone().apply { amount = mergeAmount })
 
@@ -594,6 +634,16 @@ class GroundItemsModule : SneakyModule(), Listener {
         )
     }
 
+    private fun updateInteractionForDisplayScale(display: ItemDisplay, stackScale: Float) {
+        val interaction = resolvePartner(display, KIND_INTERACTION) as? Interaction ?: return
+        interaction.interactionWidth = stackScale
+        interaction.interactionHeight = stackScale
+
+        val face = getStoredFace(display) ?: return
+        val normal = face.direction.clone().normalize()
+        interaction.teleport(display.location.clone().add(normal.multiply(interactionNormalOffset(stackScale).toDouble())))
+    }
+
     private fun canCreateGroundItem(playerId: UUID): Boolean {
         val now = System.currentTimeMillis()
         val lastCreatedAt = lastGroundItemCreationByPlayer[playerId] ?: 0L
@@ -677,12 +727,36 @@ class GroundItemsModule : SneakyModule(), Listener {
     }
 
     private fun scaleForStack(stack: ItemStack): Float {
+        val scaleRange = resolveGroundItemScaleRange(stack)
         val maxStackSize = stack.maxStackSize.coerceAtLeast(1)
-        if (maxStackSize == 1) return 2.0f
+        if (maxStackSize == 1) return scaleRange.max
 
         val amount = stack.amount.coerceIn(1, maxStackSize)
         val progress = (amount - 1).toFloat() / (maxStackSize - 1).toFloat()
-        return 0.5f + (progress * 1.5f)
+        return scaleRange.min + (progress * (scaleRange.max - scaleRange.min))
+    }
+
+    private fun resolveGroundItemScaleRange(stack: ItemStack): ScaleRange {
+        val minScale = readScaleOverride(stack, groundItemMinScaleKey, DEFAULT_GROUND_ITEM_MIN_SCALE)
+        val maxScale = readScaleOverride(stack, groundItemMaxScaleKey, DEFAULT_GROUND_ITEM_MAX_SCALE)
+
+        return if (maxScale < minScale) {
+            ScaleRange(maxScale, minScale)
+        } else {
+            ScaleRange(minScale, maxScale)
+        }
+    }
+
+    private fun readScaleOverride(stack: ItemStack, key: NamespacedKey, defaultValue: Float): Float {
+        val meta = stack.itemMeta ?: return defaultValue
+        val rawValue = meta.persistentDataContainer.get(key, PersistentDataType.STRING) ?: return defaultValue
+        val parsedValue = rawValue.toFloatOrNull() ?: return defaultValue
+        if (!parsedValue.isFinite()) return defaultValue
+        return parsedValue.coerceAtLeast(0.0f)
+    }
+
+    private fun interactionNormalOffset(stackScale: Float): Float {
+        return maxOf(0.0f, (stackScale - 0.5f) * 0.5f)
     }
 
     private fun tagEntity(entity: PersistentDataHolder, kind: String, pairId: String, partnerUuid: String) {
@@ -690,6 +764,15 @@ class GroundItemsModule : SneakyModule(), Listener {
         entity.persistentDataContainer.set(pairIdKey, PersistentDataType.STRING, pairId)
         entity.persistentDataContainer.set(partnerUuidKey, PersistentDataType.STRING, partnerUuid)
         (entity as? Entity)?.addScoreboardTag(GROUND_ITEM_TAG)
+    }
+
+    private fun setFace(entity: PersistentDataHolder, face: BlockFace) {
+        entity.persistentDataContainer.set(faceKey, PersistentDataType.STRING, face.name)
+    }
+
+    private fun getStoredFace(entity: PersistentDataHolder): BlockFace? {
+        val faceName = entity.persistentDataContainer.get(faceKey, PersistentDataType.STRING) ?: return null
+        return runCatching { BlockFace.valueOf(faceName) }.getOrNull()
     }
 
     private fun getPairId(entity: Entity): String? {
@@ -731,6 +814,13 @@ class GroundItemsModule : SneakyModule(), Listener {
     private data class Placement(
         val location: Location,
         val interactionLocation: Location,
+        val interactionScale: Float,
         val transformation: Transformation,
+        val face: BlockFace,
+    )
+
+    private data class ScaleRange(
+        val min: Float,
+        val max: Float,
     )
 }
