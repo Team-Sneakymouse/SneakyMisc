@@ -2,8 +2,26 @@ package com.danidipp.sneakymisc.phonebook
 
 import java.util.UUID
 
+@JvmInline
+value class PhonebookContactId(
+    val value: String,
+) {
+    init {
+        require(value.isNotBlank()) { "Phonebook contact id must not be blank" }
+    }
+}
+
 data class PhonebookEntry(
-    val characterUuid: String,
+    val contactId: PhonebookContactId,
+) {
+    val characterUuid: String
+        get() = contactId.value
+}
+
+fun PhonebookEntry(
+    characterUuid: String,
+): PhonebookEntry = PhonebookEntry(
+    PhonebookContactId(characterUuid),
 )
 
 data class PhonebookRecord(

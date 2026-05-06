@@ -8,8 +8,8 @@ import java.util.logging.Logger
 
 class PhonebookRepository(
     private val logger: Logger,
+    private val file: File = File(SneakyMisc.getInstance().dataFolder, "phonebooks.yml"),
 ) {
-    private val file = File(SneakyMisc.getInstance().dataFolder, "phonebooks.yml")
     private val records = linkedMapOf<UUID, PhonebookRecord>()
 
     init {
@@ -19,26 +19,42 @@ class PhonebookRepository(
     fun getContacts(ownerPlayerUuid: UUID): List<String> =
         records[ownerPlayerUuid]?.contacts?.map { it.characterUuid }.orEmpty()
 
+    fun getContactIds(ownerPlayerUuid: UUID): List<PhonebookContactId> =
+        records[ownerPlayerUuid]?.contacts?.map { it.contactId }.orEmpty()
+
     fun addContact(ownerPlayerUuid: UUID, characterUuid: String): Boolean {
+        val contactId = PhonebookContactId(characterUuid)
+        return addContact(ownerPlayerUuid, contactId)
+    }
+
+    fun addContact(ownerPlayerUuid: UUID, contactId: PhonebookContactId): Boolean {
         val record = records.getOrPut(ownerPlayerUuid) {
             PhonebookRecord(ownerPlayerUuid.toString())
         }
-        if (record.contacts.any { it.characterUuid == characterUuid }) return false
-        record.contacts.add(PhonebookEntry(characterUuid))
+        if (record.contacts.any { it.contactId == contactId }) return false
+        record.contacts.add(PhonebookEntry(contactId))
         save()
         return true
     }
 
     fun removeContact(ownerPlayerUuid: UUID, characterUuid: String): Boolean {
+        val contactId = PhonebookContactId(characterUuid)
+        return removeContact(ownerPlayerUuid, contactId)
+    }
+
+    fun removeContact(ownerPlayerUuid: UUID, contactId: PhonebookContactId): Boolean {
         val record = records[ownerPlayerUuid] ?: return false
-        val removed = record.contacts.removeIf { it.characterUuid == characterUuid }
+        val removed = record.contacts.removeIf { it.contactId == contactId }
         if (!removed) return false
         save()
         return true
     }
 
     fun containsContact(ownerPlayerUuid: UUID, characterUuid: String): Boolean =
-        records[ownerPlayerUuid]?.contacts?.any { it.characterUuid == characterUuid } == true
+        containsContact(ownerPlayerUuid, PhonebookContactId(characterUuid))
+
+    fun containsContact(ownerPlayerUuid: UUID, contactId: PhonebookContactId): Boolean =
+        records[ownerPlayerUuid]?.contacts?.any { it.contactId == contactId } == true
 
     fun save() {
         if (!file.exists()) {
@@ -50,7 +66,7 @@ class PhonebookRepository(
         val phonebooksSection = yaml.createSection("phonebooks")
         for ((ownerUuid, record) in records) {
             val recordSection = phonebooksSection.createSection(ownerUuid.toString())
-            val contactMaps = record.contacts.map { mapOf("characterUuid" to it.characterUuid) }
+            val contactMaps = record.contacts.map { mapOf("characterUuid" to it.contactId.value) }
             recordSection.set("contacts", contactMaps)
         }
 
@@ -73,11 +89,16 @@ class PhonebookRepository(
             val recordSection = phonebooksSection.getConfigurationSection(ownerKey)
             val rawContacts = recordSection?.getMapList("contacts").orEmpty()
             val contacts = rawContacts.mapNotNull { raw ->
-                val characterUuid = raw["characterUuid"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                PhonebookEntry(characterUuid)
-            }.distinctBy { it.characterUuid }.toMutableList()
+                val contactId = parseContactId(raw["characterUuid"]?.toString()) ?: return@mapNotNull null
+                PhonebookEntry(contactId)
+            }.distinctBy { it.contactId }.toMutableList()
 
             records[ownerUuid] = PhonebookRecord(ownerUuid.toString(), contacts)
         }
+    }
+
+    private fun parseContactId(raw: String?): PhonebookContactId? {
+        val value = raw?.takeIf { it.isNotBlank() } ?: return null
+        return PhonebookContactId(value)
     }
 }
