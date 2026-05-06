@@ -38,6 +38,7 @@ class PhonebookModule(
     private val repository = PhonebookRepository(logger)
     private val service = PhonebookService(logger, repository)
     private val sessions = PhonebookSessionManager()
+    private val exchange = PhonebookExchange(service, sessions)
     private val suppressExchangeClose = mutableSetOf<UUID>()
 
     private val characterUuidKey = NamespacedKey(plugin, "phonebook_character_uuid")
@@ -73,90 +74,48 @@ class PhonebookModule(
             val holder = event.inventory.holder
             if (holder !is PhonebookExchangeGui) return
             if (suppressExchangeClose.remove(player.uniqueId)) return
-            val request = sessions.getExchangeRequest(player.uniqueId) ?: return
-            if (request.requestId != holder.requestId) return
-            handleExchangeResponse(player, accepted = false)
+            if (!exchange.targetHasRequest(player.uniqueId, holder.requestId)) return
+            applyExchangeResponse(player, exchange.respond(player, accepted = false))
         }
 
         @EventHandler
         fun onEntityDamageByEntity(event: EntityDamageByEntityEvent) {
             val requester = event.damager as? Player ?: return
             val target = event.entity as? Player ?: return
-            if (!sessions.isInAddMode(requester.uniqueId)) return
 
-            event.isCancelled = true
-            sessions.consumeAddMode(requester.uniqueId)
-
-            if (requester.uniqueId == target.uniqueId) {
-                requester.sendMessage("You cannot exchange contact details with yourself.")
-                return
-            }
-
-            val requesterCharacter = service.getCurrentCharacter(requester)
-            if (requesterCharacter == null) {
-                requester.sendMessage("You do not have an active character.")
-                return
-            }
-
-            val targetCharacter = service.getCurrentCharacter(target)
-            if (targetCharacter == null) {
-                requester.sendMessage("That player does not have an active character.")
-                return
-            }
-
-            if (service.containsContact(requester.uniqueId, targetCharacter.characterUUID)) {
-                requester.sendMessage("${targetCharacter.name} is already in your phonebook.")
-                return
-            }
-
-            when (
-                val result = sessions.createExchangeRequest(
-                    requester = requester,
-                    requesterCharacterUuid = requesterCharacter.characterUUID,
-                    requesterCharacterName = requesterCharacter.name,
-                    target = target,
-                    targetCharacterUuid = targetCharacter.characterUUID,
-                    targetCharacterName = targetCharacter.name,
-                ) { expired ->
-                    val expiredTarget = Bukkit.getPlayer(expired.targetPlayerUuid)
-                    val expiredRequester = Bukkit.getPlayer(expired.requesterPlayerUuid)
-                    expiredRequester?.sendMessage("Your contact exchange request expired.")
-                    if (expiredTarget != null && expiredTarget.isOnline) {
-                        expiredTarget.sendMessage("The contact exchange request expired.")
-                        if ((expiredTarget.openInventory.topInventory.holder as? PhonebookExchangeGui)?.requestId == expired.requestId) {
-                            closeExchangeInventory(expiredTarget)
-                        }
+            val result = exchange.targetContact(
+                requester = requester,
+                target = target,
+            ) { expired ->
+                val expiredTarget = Bukkit.getPlayer(expired.targetPlayerUuid)
+                val expiredRequester = Bukkit.getPlayer(expired.requesterPlayerUuid)
+                expiredRequester?.sendMessage("Your contact exchange request expired.")
+                if (expiredTarget != null && expiredTarget.isOnline) {
+                    expiredTarget.sendMessage("The contact exchange request expired.")
+                    if ((expiredTarget.openInventory.topInventory.holder as? PhonebookExchangeGui)?.requestId == expired.requestId) {
+                        closeExchangeInventory(expiredTarget)
                     }
                 }
-            ) {
-                is CreateExchangeRequestResult.Created -> {
-                    requester.sendMessage("Contact exchange request sent to ${targetCharacter.name}.")
-                    openExchangeGui(target, result.request)
-                }
-
-                CreateExchangeRequestResult.RequesterBusy -> requester.sendMessage("You already have a pending exchange request.")
-                CreateExchangeRequestResult.TargetBusy -> requester.sendMessage("That player is already handling another exchange request.")
             }
+            if (result is TargetContactExchangeResult.NotTargeting) return
+
+            event.isCancelled = true
+            applyTargetContactResult(requester, target, result)
         }
 
         @EventHandler
         fun onQuit(event: PlayerQuitEvent) {
-            sessions.cancelAddMode(event.player.uniqueId)
-
-            val requesterRemoved = sessions.removeExchangeRequestForRequester(event.player.uniqueId)
-            if (requesterRemoved != null) {
-                val target = Bukkit.getPlayer(requesterRemoved.targetPlayerUuid)
+            val cancellation = exchange.cancelForQuit(event.player.uniqueId) ?: return
+            if (cancellation.playerWasRequester) {
+                val target = Bukkit.getPlayer(cancellation.request.targetPlayerUuid)
                 if (target != null && target.isOnline) {
                     target.sendMessage("The contact exchange was canceled.")
-                    if ((target.openInventory.topInventory.holder as? PhonebookExchangeGui)?.requestId == requesterRemoved.requestId) {
+                    if ((target.openInventory.topInventory.holder as? PhonebookExchangeGui)?.requestId == cancellation.request.requestId) {
                         closeExchangeInventory(target)
                     }
                 }
-            }
-
-            val targetRemoved = sessions.removeExchangeRequestForTarget(event.player.uniqueId)
-            if (targetRemoved != null) {
-                Bukkit.getPlayer(targetRemoved.requesterPlayerUuid)?.sendMessage("The contact exchange was canceled.")
+            } else {
+                Bukkit.getPlayer(cancellation.request.requesterPlayerUuid)?.sendMessage("The contact exchange was canceled.")
             }
         }
     }
@@ -215,12 +174,12 @@ class PhonebookModule(
         when (event.slot) {
             3 -> {
                 closeExchangeInventory(player)
-                handleExchangeResponse(player, accepted = true)
+                applyExchangeResponse(player, exchange.respond(player, accepted = true))
             }
 
             5 -> {
                 closeExchangeInventory(player)
-                handleExchangeResponse(player, accepted = false)
+                applyExchangeResponse(player, exchange.respond(player, accepted = false))
             }
         }
     }
@@ -257,12 +216,12 @@ class PhonebookModule(
     }
 
     fun cancelAddMode(player: Player, message: String? = null) {
-        if (!sessions.cancelAddMode(player.uniqueId)) return
+        if (!exchange.cancelTargeting(player.uniqueId)) return
         if (message != null) player.sendMessage(message)
     }
 
     private fun startAddMode(player: Player) {
-        sessions.startAddMode(player) { expired ->
+        exchange.startTargeting(player) { expired ->
             expired.sendMessage("Phonebook targeting expired.")
         }
         player.sendMessage("Hit another player within 30 seconds to exchange contact details.")
@@ -280,44 +239,49 @@ class PhonebookModule(
         target.sendMessage("${request.requesterCharacterName} wants to exchange contact details.")
     }
 
-    private fun handleExchangeResponse(target: Player, accepted: Boolean): ExchangeResponseResult {
-        val request = sessions.removeExchangeRequestForTarget(target.uniqueId) ?: return ExchangeResponseResult.Missing
-        val requester = Bukkit.getPlayer(request.requesterPlayerUuid)
-        if (requester == null || !requester.isOnline) {
-            target.sendMessage("That exchange request is no longer valid.")
-            return ExchangeResponseResult.Invalid
+    private fun applyTargetContactResult(
+        requester: Player,
+        target: Player,
+        result: TargetContactExchangeResult,
+    ) {
+        when (result) {
+            TargetContactExchangeResult.NotTargeting -> Unit
+            TargetContactExchangeResult.SelfTarget -> requester.sendMessage("You cannot exchange contact details with yourself.")
+            TargetContactExchangeResult.RequesterMissingCharacter -> requester.sendMessage("You do not have an active character.")
+            TargetContactExchangeResult.TargetMissingCharacter -> requester.sendMessage("That player does not have an active character.")
+            is TargetContactExchangeResult.AlreadyContact -> requester.sendMessage("${result.targetCharacterName} is already in your phonebook.")
+            is TargetContactExchangeResult.Created -> {
+                requester.sendMessage("Contact exchange request sent to ${result.request.targetCharacterName}.")
+                openExchangeGui(target, result.request)
+            }
+            TargetContactExchangeResult.RequesterBusy -> requester.sendMessage("You already have a pending exchange request.")
+            TargetContactExchangeResult.TargetBusy -> requester.sendMessage("That player is already handling another exchange request.")
         }
+    }
 
-        val requesterCharacter = service.getCurrentCharacter(requester)
-        val targetCharacter = service.getCurrentCharacter(target)
-        if (
-            requesterCharacter == null ||
-            targetCharacter == null ||
-            requesterCharacter.characterUUID != request.requesterCharacterUuid ||
-            targetCharacter.characterUUID != request.targetCharacterUuid
-        ) {
-            requester.sendMessage("The contact exchange is no longer valid.")
-            target.sendMessage("The contact exchange is no longer valid.")
-            return ExchangeResponseResult.Invalid
+    private fun applyExchangeResponse(target: Player, result: ContactExchangeResponseResult) {
+        when (result) {
+            ContactExchangeResponseResult.Missing -> Unit
+            ContactExchangeResponseResult.RequesterOffline -> target.sendMessage("That exchange request is no longer valid.")
+            is ContactExchangeResponseResult.CharacterChanged -> {
+                Bukkit.getPlayer(result.request.requesterPlayerUuid)?.sendMessage("The contact exchange is no longer valid.")
+                target.sendMessage("The contact exchange is no longer valid.")
+            }
+            is ContactExchangeResponseResult.Declined -> {
+                Bukkit.getPlayer(result.request.requesterPlayerUuid)
+                    ?.sendMessage("${result.targetCharacterName} declined your contact exchange.")
+                target.sendMessage("Contact exchange declined.")
+            }
+            is ContactExchangeResponseResult.Accepted -> {
+                Bukkit.getPlayer(result.request.requesterPlayerUuid)
+                    ?.sendMessage("Added ${result.targetCharacterName} to your phonebook.")
+                target.sendMessage("Added ${result.requesterCharacterName} to your phonebook.")
+            }
+            is ContactExchangeResponseResult.Failed -> {
+                Bukkit.getPlayer(result.request.requesterPlayerUuid)?.sendMessage(result.message)
+                target.sendMessage(result.message)
+            }
         }
-
-        if (!accepted) {
-            requester.sendMessage("${targetCharacter.name} declined your contact exchange.")
-            target.sendMessage("Contact exchange declined.")
-            return ExchangeResponseResult.Declined
-        }
-
-        val result = service.exchangeContacts(requester, target)
-        if (result.isFailure) {
-            val message = result.exceptionOrNull()?.message ?: "The contact exchange failed."
-            requester.sendMessage(message)
-            target.sendMessage(message)
-            return ExchangeResponseResult.Invalid
-        }
-
-        requester.sendMessage("Added ${targetCharacter.name} to your phonebook.")
-        target.sendMessage("Added ${requesterCharacter.name} to your phonebook.")
-        return ExchangeResponseResult.Accepted
     }
 
     private fun closeExchangeInventory(player: Player) {

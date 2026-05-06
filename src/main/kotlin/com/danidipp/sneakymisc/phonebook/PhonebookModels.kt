@@ -63,9 +63,37 @@ sealed interface CreateExchangeRequestResult {
     data object TargetBusy : CreateExchangeRequestResult
 }
 
-sealed interface ExchangeResponseResult {
-    data object Accepted : ExchangeResponseResult
-    data object Declined : ExchangeResponseResult
-    data object Invalid : ExchangeResponseResult
-    data object Missing : ExchangeResponseResult
+sealed interface TargetContactExchangeResult {
+    data object NotTargeting : TargetContactExchangeResult
+    data object SelfTarget : TargetContactExchangeResult
+    data object RequesterMissingCharacter : TargetContactExchangeResult
+    data object TargetMissingCharacter : TargetContactExchangeResult
+    data class AlreadyContact(val targetCharacterName: String) : TargetContactExchangeResult
+    data class Created(val request: PendingExchangeRequest) : TargetContactExchangeResult
+    data object RequesterBusy : TargetContactExchangeResult
+    data object TargetBusy : TargetContactExchangeResult
 }
+
+sealed interface ContactExchangeResponseResult {
+    data object Missing : ContactExchangeResponseResult
+    data object RequesterOffline : ContactExchangeResponseResult
+    data class CharacterChanged(val request: PendingExchangeRequest) : ContactExchangeResponseResult
+    data class Declined(
+        val request: PendingExchangeRequest,
+        val targetCharacterName: String,
+    ) : ContactExchangeResponseResult
+    data class Accepted(
+        val request: PendingExchangeRequest,
+        val requesterCharacterName: String,
+        val targetCharacterName: String,
+    ) : ContactExchangeResponseResult
+    data class Failed(
+        val request: PendingExchangeRequest,
+        val message: String,
+    ) : ContactExchangeResponseResult
+}
+
+data class ContactExchangeCancellation(
+    val request: PendingExchangeRequest,
+    val playerWasRequester: Boolean,
+)
