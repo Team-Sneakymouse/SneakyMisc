@@ -25,8 +25,12 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
 	compileOnly("org.apache.logging.log4j:log4j-core:2.24.3")
 	compileOnly("me.clip:placeholderapi:2.11.6")
+	compileOnly("io.github.team-sneakymouse:sneakycharactermanager-paper:1.6.0")
 	compileOnly(files("C:\\Users\\DaniDipp\\Downloads\\1.21.4\\SneakyPocketbase-1.0.jar"))
-	compileOnly(fileTree("libs") { include("*.jar") })
+	compileOnly(fileTree("libs") {
+		include("*.jar")
+		exclude("SneakyCharacterManager-*.jar")
+	})
 	testImplementation(kotlin("test"))
 	testImplementation("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
 }
