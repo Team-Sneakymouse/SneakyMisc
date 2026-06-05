@@ -19,7 +19,18 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
         renderer = PhonebookBrowserRenderer(),
     )
     private val inventoryFactory = PhonebookInventoryFactory(plugin)
+    private val exchangeInventoryFactory = PhonebookExchangeInventoryFactory(plugin)
     private val callRouter = PhonebookCallRouter(directory, directory, SneakyCellPhonesCaller())
+    private val exchangeActions = PhonebookExchangeActions(
+        phonebooks = storage,
+        activeCharacters = directory,
+        directory = directory,
+    )
+    private val exchangeController = BukkitPhonebookExchangeController(
+        plugin = plugin,
+        actions = exchangeActions,
+        inventoryFactory = exchangeInventoryFactory,
+    )
     private val guiActions = PhonebookGuiActions(
         phonebooks = storage,
         activeCharacters = directory,
@@ -38,7 +49,8 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
     )
 
     override val listeners = listOf(
-        PhonebookGuiListener(guiActions, inventoryFactory)
+        PhonebookGuiListener(guiActions, inventoryFactory, exchangeController),
+        PhonebookExchangeListener(exchangeController, exchangeInventoryFactory),
     )
 
     init {

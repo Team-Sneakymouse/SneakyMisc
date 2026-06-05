@@ -33,7 +33,7 @@ class PhonebookGuiActions(
                 result
             }
             PhonebookContactClickResult.StaleOwner -> {
-                viewer.sendMessage(PhonebookMessage(PhonebookMessageKeys.STALE_OWNER))
+                viewer.sendMessage(PhonebookMessageCatalog.staleOwner())
                 result
             }
             PhonebookContactClickResult.MissingContact -> {
@@ -49,7 +49,7 @@ class PhonebookGuiActions(
         selectedContactCharacterId: UUID,
     ): PhonebookRemoveContactResult {
         if (activeCharacters.activeCharacter(state.viewerAccountId) != state.ownerCharacterId) {
-            viewer.sendMessage(PhonebookMessage(PhonebookMessageKeys.STALE_OWNER))
+            viewer.sendMessage(PhonebookMessageCatalog.staleOwner())
             return PhonebookRemoveContactResult.StaleOwner
         }
 
@@ -57,20 +57,14 @@ class PhonebookGuiActions(
         val removedContact = removal.removedContact
         if (removedContact == null) {
             viewer.sendMessage(
-                PhonebookMessage(
-                    PhonebookMessageKeys.CONTACT_ALREADY_REMOVED,
-                    mapOf("character" to ownerCharacterName(state)),
-                )
+                PhonebookMessageCatalog.contactAlreadyRemoved(ownerCharacterName(state)),
             )
             viewer.openInventory(browser.refresh(removal.data, state))
             return PhonebookRemoveContactResult.AlreadyRemoved
         }
 
         viewer.sendMessage(
-            PhonebookMessage(
-                PhonebookMessageKeys.CONTACT_REMOVED,
-                mapOf("character" to removedContactName(removedContact, selectedContactCharacterId)),
-            )
+            PhonebookMessageCatalog.contactRemoved(removedContactName(removedContact, selectedContactCharacterId)),
         )
         viewer.openInventory(browser.refresh(removal.data, state))
         return PhonebookRemoveContactResult.Removed
@@ -83,10 +77,7 @@ class PhonebookGuiActions(
         selectedContactCharacterId: UUID,
     ) {
         viewer.sendMessage(
-            PhonebookMessage(
-                PhonebookMessageKeys.TARGET_OFFLINE,
-                mapOf("character" to contactName(data, state, selectedContactCharacterId)),
-            )
+            PhonebookMessageCatalog.targetOffline(contactName(data, state, selectedContactCharacterId)),
         )
     }
 

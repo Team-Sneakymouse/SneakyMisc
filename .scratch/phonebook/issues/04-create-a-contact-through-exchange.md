@@ -1,6 +1,6 @@
 # Create A Contact Through Exchange
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -41,3 +41,4 @@ Add the first complete Phonebook Exchange path. A player clicks Add Contact, ent
 ## Comments
 
 - Architecture note from 2026-06-05 review: implement Phonebook Exchange and Phonebook Seeking as a testable state-machine module before adding Bukkit damage, inventory, quit, scheduler, and GUI adapters. The state machine should own timeout/reset, snapshot, duplicate, busy-target, accept, decline, close-as-decline, target quit, persistence, listing-on-accept, and message-outcome rules so those policies do not scatter across listeners and scheduled tasks.
+- 2026-06-05: Implemented the first Phonebook Exchange path with a pure `PhonebookExchangeActions` state-machine slice and Bukkit adapters second. Seeking reset/timeout, soft and hard damage outcomes, snapshotting, duplicate and busy rejection, accept, decline, close-as-decline, scheduled-close idempotency, target quit, storage-owned accept persistence, listing-on-accept, and keyed message outcomes are covered by tests. Added Add Contact and accept/decline GUI holders, Bukkit scheduler/effect application, damage routing without cancellation, simple projectile shooter resolution, and inventory/quit adapters. Full Gradle test suite passes; remaining validation should be a human Minecraft-client smoke test for actual inventory visuals, damage routing, and scheduler timing.

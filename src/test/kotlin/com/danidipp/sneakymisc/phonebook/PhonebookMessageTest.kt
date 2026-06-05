@@ -11,6 +11,15 @@ import net.kyori.adventure.translation.GlobalTranslator
 
 class PhonebookMessageTest {
     @Test
+    fun `phonebook message catalog owns key named arguments and default translation`() {
+        val entry = PhonebookMessageCatalog.entry(PhonebookMessageKeys.TARGET_OFFLINE)
+
+        assertEquals(PhonebookMessageKeys.TARGET_OFFLINE, entry.key)
+        assertEquals(listOf("character"), entry.argumentNames)
+        assertEquals("<red><gold>{0}</gold> is no longer reachable.", entry.defaultMiniMessage)
+    }
+
+    @Test
     fun `phonebook message keeps named arguments until the Bukkit adapter converts them`() {
         val message = PhonebookMessage(
             PhonebookMessageKeys.TARGET_OFFLINE,
@@ -43,6 +52,20 @@ class PhonebookMessageTest {
         )
 
         assertFalse(rendered is TranslatableComponent)
+    }
+
+    @Test
+    fun `default phonebook translations cover every catalog entry`() {
+        PhonebookTranslations.registerDefaults()
+
+        PhonebookMessageCatalog.entries.forEach { entry ->
+            val arguments = entry.argumentNames.map { name -> Component.text(name) }
+
+            assertFalse(
+                GlobalTranslator.render(Component.translatable(entry.key, arguments), Locale.US) is TranslatableComponent,
+                "Default translation did not resolve for ${entry.key}",
+            )
+        }
     }
 
     @Test

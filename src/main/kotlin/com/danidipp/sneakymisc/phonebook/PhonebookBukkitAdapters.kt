@@ -54,9 +54,13 @@ class BukkitPhonebookViewer(private val player: Player, private val inventoryFac
     }
 }
 
-fun PhonebookMessage.asComponent(): Component = Component.translatable(key,PhonebookMessageKeys.argumentNames(key).map { name ->
-    Component.text(requireNotNull(arguments[name]) { "Missing Phonebook message argument '$name' for '$key'" })
-})
+fun PhonebookMessage.asComponent(): Component =
+    Component.translatable(
+        key,
+        PhonebookMessageCatalog.argumentNames(key).map { name ->
+            Component.text(requireNotNull(arguments[name]) { "Missing Phonebook message argument '$name' for '$key'" })
+        },
+    )
 
 object PhonebookTranslations {
     private var registered = false
@@ -69,15 +73,9 @@ object PhonebookTranslations {
             MiniMessage.miniMessage(),
         )
         store.defaultLocale(Locale.US)
-        store.register(PhonebookMessageKeys.NO_ACTIVE_CHARACTER, Locale.US, "<red>You have no active Character.")
-        store.register(PhonebookMessageKeys.TARGET_OFFLINE, Locale.US, "<red><gold>{0}</gold> is no longer reachable.")
-        store.register(PhonebookMessageKeys.STALE_OWNER, Locale.US, "<red>This Phonebook is no longer active.")
-        store.register(PhonebookMessageKeys.PLAYER_ONLY, Locale.US, "<red>Only players can open a Phonebook.")
-        store.register(PhonebookMessageKeys.LISTED, Locale.US, "<green>Your Character is now listed in Phonebooks.")
-        store.register(PhonebookMessageKeys.UNLISTED, Locale.US, "<yellow>Your Character is now hidden from Phonebooks.")
-        store.register(PhonebookMessageKeys.CONTACT_REMOVED, Locale.US, "<green>Removed <gold>{0}</gold> from your Phonebook.")
-        store.register(PhonebookMessageKeys.CONTACT_ALREADY_REMOVED, Locale.US, "<yellow><gold>{0}</gold>'s Phonebook was already updated.")
-        store.register(PhonebookMessageKeys.TITLE, Locale.US, "<gold>Phonebook")
+        PhonebookMessageCatalog.entries.forEach { entry ->
+            store.register(entry.key, Locale.US, entry.defaultMiniMessage)
+        }
         GlobalTranslator.translator().addSource(store)
         registered = true
     }

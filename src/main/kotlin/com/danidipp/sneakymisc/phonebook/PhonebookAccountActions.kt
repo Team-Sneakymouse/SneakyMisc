@@ -4,7 +4,6 @@ import java.util.UUID
 
 interface PhonebookDataStore {
     fun load(): PhonebookData
-    fun save(data: PhonebookData)
 }
 
 data class PhonebookContactRemoval(
@@ -29,8 +28,17 @@ enum class PhonebookListingResult {
     NoActiveCharacter,
 }
 
+data class PhonebookListingChange(
+    val data: PhonebookData,
+    val listed: Boolean,
+)
+
+interface PhonebookListingStore : PhonebookDataStore {
+    fun changeListing(characterId: UUID, mode: PhonebookListingMode): PhonebookListingChange
+}
+
 class PhonebookAccountActions(
-    private val phonebooks: PhonebookDataStore,
+    private val phonebooks: PhonebookListingStore,
     private val activeCharacters: PhonebookActiveCharacters,
     private val browser: PhonebookBrowser,
 ) {
@@ -51,20 +59,12 @@ class PhonebookAccountActions(
             noPermission = PhonebookListingResult.NoPermission,
             noActiveCharacter = PhonebookListingResult.NoActiveCharacter,
         ) { characterId ->
-            val data = phonebooks.load()
-            val shouldList = when (mode) {
-                PhonebookListingMode.Toggle -> characterId !in data.listings
-                PhonebookListingMode.Listed -> true
-                PhonebookListingMode.Unlisted -> false
-            }
-
-            if (shouldList) {
-                phonebooks.save(data.copy(listings = data.listings + characterId))
-                viewer.sendMessage(PhonebookMessage(PhonebookMessageKeys.LISTED))
+            val change = phonebooks.changeListing(characterId, mode)
+            if (change.listed) {
+                viewer.sendMessage(PhonebookMessageCatalog.listed())
                 PhonebookListingResult.Listed
             } else {
-                phonebooks.save(data.copy(listings = data.listings - characterId))
-                viewer.sendMessage(PhonebookMessage(PhonebookMessageKeys.UNLISTED))
+                viewer.sendMessage(PhonebookMessageCatalog.unlisted())
                 PhonebookListingResult.Unlisted
             }
         }
@@ -79,7 +79,7 @@ class PhonebookAccountActions(
 
         val characterId = activeCharacters.activeCharacter(viewer.accountId)
             ?: return noActiveCharacter.also {
-                viewer.sendMessage(PhonebookMessage(PhonebookMessageKeys.NO_ACTIVE_CHARACTER))
+                viewer.sendMessage(PhonebookMessageCatalog.noActiveCharacter())
             }
 
         return action(characterId)

@@ -183,6 +183,62 @@ class PhonebookStorageTest {
     }
 
     @Test
+    fun `changing a listing mutates storage immediately without changing contacts`() {
+        val listedCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
+        val unlistedCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
+        val contactCharacter = UUID.fromString("30000000-0000-0000-0000-000000000000")
+        val listedAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val contactAccount = UUID.fromString("00000000-0000-0000-0000-000000000003")
+        val contact = PhonebookContact.between(listedCharacter, listedAccount, contactCharacter, contactAccount)
+        val configPath = createTempFile(prefix = "phonebook-listing-change", suffix = ".yml")
+        val storage = PhonebookStorage(configPath, logger = noOpLogger())
+        storage.save(
+            PhonebookData(
+                listings = setOf(listedCharacter),
+                contacts = mapOf(PhonebookContactKeys.forCharacters(listedCharacter, contactCharacter) to contact),
+            )
+        )
+
+        val listed = storage.changeListing(unlistedCharacter, PhonebookListingMode.Listed)
+        val unlisted = storage.changeListing(listedCharacter, PhonebookListingMode.Unlisted)
+
+        assertEquals(true, listed.listed)
+        assertEquals(false, unlisted.listed)
+        assertEquals(setOf(unlistedCharacter), storage.load().listings)
+        assertEquals(
+            mapOf(PhonebookContactKeys.forCharacters(listedCharacter, contactCharacter) to contact),
+            storage.load().contacts,
+        )
+    }
+
+    @Test
+    fun `accepting an exchange creates a contact and lists both snapshotted Characters`() {
+        val initiator = PhonebookCharacter(
+            accountId = UUID.fromString("00000000-0000-0000-0000-000000000001"),
+            characterId = UUID.fromString("10000000-0000-0000-0000-000000000000"),
+            displayName = "Initiator",
+        )
+        val target = PhonebookCharacter(
+            accountId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
+            characterId = UUID.fromString("20000000-0000-0000-0000-000000000000"),
+            displayName = "Target",
+        )
+        val existingListing = UUID.fromString("30000000-0000-0000-0000-000000000000")
+        val configPath = createTempFile(prefix = "phonebook-accept-exchange", suffix = ".yml")
+        val storage = PhonebookStorage(configPath, logger = noOpLogger())
+        storage.save(PhonebookData(listings = setOf(existingListing)))
+
+        val result = storage.acceptExchange(initiator, target)
+
+        assertEquals(PhonebookExchangePersistenceResult.Created(storage.load()), result)
+        assertEquals(setOf(existingListing, initiator.characterId, target.characterId), storage.load().listings)
+        assertEquals(
+            PhonebookContact.between(initiator.characterId, initiator.accountId, target.characterId, target.accountId),
+            storage.load().contactBetween(initiator.characterId, target.characterId),
+        )
+    }
+
+    @Test
     fun `saving canonicalizes contact keys before sorting and deduplicating output`() {
         val lowerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val lowerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")

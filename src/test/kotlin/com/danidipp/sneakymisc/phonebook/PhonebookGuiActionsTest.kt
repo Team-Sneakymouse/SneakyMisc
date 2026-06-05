@@ -333,7 +333,7 @@ class PhonebookGuiActionsTest {
 
         override fun load(): PhonebookData = data
 
-        override fun save(data: PhonebookData) {
+        fun save(data: PhonebookData) {
             this.data = data
             savedData += data
         }

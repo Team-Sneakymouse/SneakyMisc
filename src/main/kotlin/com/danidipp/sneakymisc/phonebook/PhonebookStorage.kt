@@ -41,7 +41,10 @@ data class PhonebookData(val listings: Set<UUID> = emptySet(), val contacts: Map
         contacts[PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)]
 }
 
-class PhonebookStorage(private val configPath: Path, private val logger: Logger) : PhonebookContactStore {
+class PhonebookStorage(private val configPath: Path, private val logger: Logger) :
+    PhonebookContactStore,
+    PhonebookExchangeStore,
+    PhonebookListingStore {
     fun addContact(firstCharacterId: UUID, firstAccountId: UUID, secondCharacterId: UUID, secondAccountId: UUID): Boolean {
         val data = load()
         val key = PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)
@@ -59,6 +62,42 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         val updatedData = data.copy(contacts = data.contacts - key)
         save(updatedData)
         return PhonebookContactRemoval(updatedData, removedContact)
+    }
+
+    override fun changeListing(characterId: UUID, mode: PhonebookListingMode): PhonebookListingChange {
+        val data = load()
+        val shouldList = when (mode) {
+            PhonebookListingMode.Toggle -> characterId !in data.listings
+            PhonebookListingMode.Listed -> true
+            PhonebookListingMode.Unlisted -> false
+        }
+
+        val updatedData = if (shouldList) {
+            data.copy(listings = data.listings + characterId)
+        } else {
+            data.copy(listings = data.listings - characterId)
+        }
+        save(updatedData)
+        return PhonebookListingChange(updatedData, listed = shouldList)
+    }
+
+    override fun acceptExchange(initiator: PhonebookCharacter, target: PhonebookCharacter): PhonebookExchangePersistenceResult {
+        val data = load()
+        val key = PhonebookContactKeys.forCharacters(initiator.characterId, target.characterId)
+        if (key in data.contacts) return PhonebookExchangePersistenceResult.AlreadyExists(data)
+
+        val contact = PhonebookContact.between(
+            initiator.characterId,
+            initiator.accountId,
+            target.characterId,
+            target.accountId,
+        )
+        val updatedData = data.copy(
+            listings = data.listings + initiator.characterId + target.characterId,
+            contacts = data.contacts + (key to contact),
+        )
+        save(updatedData)
+        return PhonebookExchangePersistenceResult.Created(updatedData)
     }
 
     override fun load(): PhonebookData {
@@ -83,7 +122,7 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         return PhonebookData(listings = listings, contacts = contacts)
     }
 
-    override fun save(data: PhonebookData) {
+    fun save(data: PhonebookData) {
         configPath.parent?.createDirectories()
 
         val yaml = YamlConfiguration()

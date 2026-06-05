@@ -51,6 +51,38 @@ class PhonebookGuiListenerTest {
         assertTrue(event.isCancelled)
     }
 
+    @Test
+    fun `exchange inventory clicks are cancelled before routing`() {
+        val view = exchangeView()
+        val event = InventoryClickEvent(
+            view,
+            InventoryType.SlotType.CONTAINER,
+            0,
+            ClickType.LEFT,
+            InventoryAction.NOTHING,
+        )
+
+        exchangeListener().onInventoryClick(event)
+
+        assertTrue(event.isCancelled)
+    }
+
+    @Test
+    fun `exchange inventory drags are cancelled`() {
+        val view = exchangeView()
+        val event = InventoryDragEvent(
+            view,
+            blankItemStack(),
+            blankItemStack(),
+            false,
+            emptyMap(),
+        )
+
+        exchangeListener().onInventoryDrag(event)
+
+        assertTrue(event.isCancelled)
+    }
+
     private fun listener(): PhonebookGuiListener {
         val storage = PhonebookStorage(createTempFile(prefix = "phonebook-listener", suffix = ".yml"), Logger.getAnonymousLogger())
         val directory = FakePhonebookDirectory()
@@ -70,6 +102,18 @@ class PhonebookGuiListenerTest {
             ),
             inventoryFactory = inventoryFactory,
         )
+    }
+
+    private fun exchangeListener(): PhonebookExchangeListener {
+        val storage = PhonebookStorage(createTempFile(prefix = "phonebook-exchange-listener", suffix = ".yml"), Logger.getAnonymousLogger())
+        val directory = FakePhonebookDirectory()
+        val inventoryFactory = PhonebookExchangeInventoryFactory(plugin())
+        val controller = BukkitPhonebookExchangeController(
+            plugin = plugin(),
+            actions = PhonebookExchangeActions(storage, directory, directory),
+            inventoryFactory = inventoryFactory,
+        )
+        return PhonebookExchangeListener(controller, inventoryFactory)
     }
 
     private fun browsingView(): InventoryView {
@@ -97,7 +141,39 @@ class PhonebookGuiListenerTest {
         }
     }
 
-    private fun inventory(holder: PhonebookBrowsingHolder?): Inventory =
+    private fun exchangeView(): InventoryView {
+        val holder = PhonebookExchangeHolder(
+            PhonebookExchangeDecisionModel(
+                exchangeId = PhonebookExchangeId(1),
+                initiator = PhonebookCharacter(
+                    accountId = UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                    characterId = UUID.fromString("10000000-0000-0000-0000-000000000000"),
+                    displayName = "Initiator",
+                ),
+                target = PhonebookCharacter(
+                    accountId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                    characterId = UUID.fromString("20000000-0000-0000-0000-000000000000"),
+                    displayName = "Target",
+                ),
+            )
+        )
+        val topInventory = inventory(holder)
+        val bottomInventory = inventory(null)
+
+        return proxy { method, args ->
+            when (method.name) {
+                "getTopInventory" -> topInventory
+                "getBottomInventory" -> bottomInventory
+                "getInventory" -> if ((args?.firstOrNull() as? Int ?: 0) < 27) topInventory else bottomInventory
+                "getType" -> InventoryType.CHEST
+                "getSlotType" -> InventoryType.SlotType.CONTAINER
+                "countSlots" -> 63
+                else -> defaultReturn(method)
+            }
+        }
+    }
+
+    private fun inventory(holder: org.bukkit.inventory.InventoryHolder?): Inventory =
         proxy { method, _ ->
             when (method.name) {
                 "getSize" -> 54

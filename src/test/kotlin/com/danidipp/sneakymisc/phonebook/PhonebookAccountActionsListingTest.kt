@@ -11,12 +11,12 @@ class PhonebookAccountActionsListingTest {
         val characterId = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val viewer = RecordingPhonebookViewer(accountId = accountId, permitted = true)
         val activeCharacters = FakePhonebookActiveCharacters(activeCharacters = mapOf(accountId to characterId))
-        val repository = RecordingPhonebookDataStore(PhonebookData())
+        val repository = RecordingPhonebookListingStore(PhonebookData())
 
         val result = accountActions(repository, activeCharacters).changeListing(viewer, PhonebookListingMode.Toggle)
 
         assertEquals(PhonebookListingResult.Listed, result)
-        assertEquals(setOf(characterId), repository.savedData.single().listings)
+        assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Toggle)), repository.changeRequests)
         assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.LISTED)), viewer.messages)
     }
 
@@ -26,12 +26,12 @@ class PhonebookAccountActionsListingTest {
         val characterId = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val viewer = RecordingPhonebookViewer(accountId = accountId, permitted = true)
         val activeCharacters = FakePhonebookActiveCharacters(activeCharacters = mapOf(accountId to characterId))
-        val repository = RecordingPhonebookDataStore(PhonebookData(listings = setOf(characterId)))
+        val repository = RecordingPhonebookListingStore(PhonebookData(listings = setOf(characterId)))
 
         val result = accountActions(repository, activeCharacters).changeListing(viewer, PhonebookListingMode.Toggle)
 
         assertEquals(PhonebookListingResult.Unlisted, result)
-        assertEquals(emptySet(), repository.savedData.single().listings)
+        assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Toggle)), repository.changeRequests)
         assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.UNLISTED)), viewer.messages)
     }
 
@@ -41,12 +41,12 @@ class PhonebookAccountActionsListingTest {
         val characterId = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val viewer = RecordingPhonebookViewer(accountId = accountId, permitted = true)
         val activeCharacters = FakePhonebookActiveCharacters(activeCharacters = mapOf(accountId to characterId))
-        val repository = RecordingPhonebookDataStore(PhonebookData())
+        val repository = RecordingPhonebookListingStore(PhonebookData())
 
         val result = accountActions(repository, activeCharacters).changeListing(viewer, PhonebookListingMode.Listed)
 
         assertEquals(PhonebookListingResult.Listed, result)
-        assertEquals(setOf(characterId), repository.savedData.single().listings)
+        assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Listed)), repository.changeRequests)
         assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.LISTED)), viewer.messages)
     }
 
@@ -59,7 +59,7 @@ class PhonebookAccountActionsListingTest {
         val contact = PhonebookContact.between(characterId, accountId, otherCharacter, otherAccount)
         val viewer = RecordingPhonebookViewer(accountId = accountId, permitted = true)
         val activeCharacters = FakePhonebookActiveCharacters(activeCharacters = mapOf(accountId to characterId))
-        val repository = RecordingPhonebookDataStore(
+        val repository = RecordingPhonebookListingStore(
             PhonebookData(
                 listings = setOf(characterId, otherCharacter),
                 contacts = mapOf(PhonebookContactKeys.forCharacters(characterId, otherCharacter) to contact),
@@ -69,8 +69,7 @@ class PhonebookAccountActionsListingTest {
         val result = accountActions(repository, activeCharacters).changeListing(viewer, PhonebookListingMode.Unlisted)
 
         assertEquals(PhonebookListingResult.Unlisted, result)
-        assertEquals(setOf(otherCharacter), repository.savedData.single().listings)
-        assertEquals(mapOf(PhonebookContactKeys.forCharacters(characterId, otherCharacter) to contact), repository.savedData.single().contacts)
+        assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Unlisted)), repository.changeRequests)
         assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.UNLISTED)), viewer.messages)
     }
 
@@ -79,13 +78,13 @@ class PhonebookAccountActionsListingTest {
         val accountId = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val viewer = RecordingPhonebookViewer(accountId = accountId, permitted = false)
         val activeCharacters = FakePhonebookActiveCharacters(activeCharacters = emptyMap())
-        val repository = RecordingPhonebookDataStore(PhonebookData())
+        val repository = RecordingPhonebookListingStore(PhonebookData())
 
         val result = accountActions(repository, activeCharacters).changeListing(viewer, PhonebookListingMode.Toggle)
 
         assertEquals(PhonebookListingResult.NoPermission, result)
         assertEquals(0, activeCharacters.lookups)
-        assertEquals(emptyList(), repository.savedData)
+        assertEquals(emptyList(), repository.changeRequests)
         assertEquals(emptyList(), viewer.messages)
     }
 
@@ -94,12 +93,12 @@ class PhonebookAccountActionsListingTest {
         val accountId = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val viewer = RecordingPhonebookViewer(accountId = accountId, permitted = true)
         val activeCharacters = FakePhonebookActiveCharacters(activeCharacters = emptyMap())
-        val repository = RecordingPhonebookDataStore(PhonebookData())
+        val repository = RecordingPhonebookListingStore(PhonebookData())
 
         val result = accountActions(repository, activeCharacters).changeListing(viewer, PhonebookListingMode.Toggle)
 
         assertEquals(PhonebookListingResult.NoActiveCharacter, result)
-        assertEquals(emptyList(), repository.savedData)
+        assertEquals(emptyList(), repository.changeRequests)
         assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.NO_ACTIVE_CHARACTER)), viewer.messages)
     }
 
@@ -115,7 +114,7 @@ class PhonebookAccountActionsListingTest {
             characters = listOf(PhonebookCharacter(targetAccount, targetCharacter, "Target")),
             onlineAccounts = setOf(targetAccount),
         )
-        val repository = RecordingPhonebookDataStore(
+        val repository = RecordingPhonebookListingStore(
             PhonebookData(
                 contacts = mapOf(
                     PhonebookContactKeys.forCharacters(ownerCharacter, targetCharacter) to
@@ -144,7 +143,7 @@ class PhonebookAccountActionsListingTest {
     }
 
     private fun accountActions(
-        phonebooks: PhonebookDataStore,
+        phonebooks: PhonebookListingStore,
         activeCharacters: PhonebookActiveCharacters,
         directory: PhonebookDirectory = FakePhonebookDirectory(),
     ): PhonebookAccountActions =
@@ -158,15 +157,30 @@ class PhonebookAccountActionsListingTest {
             ),
         )
 
-    private class RecordingPhonebookDataStore(initialData: PhonebookData) : PhonebookDataStore {
+    private data class PhonebookListingChangeRequest(
+        val characterId: UUID,
+        val mode: PhonebookListingMode,
+    )
+
+    private class RecordingPhonebookListingStore(initialData: PhonebookData) : PhonebookListingStore {
         private var data = initialData
-        val savedData = mutableListOf<PhonebookData>()
+        val changeRequests = mutableListOf<PhonebookListingChangeRequest>()
 
         override fun load(): PhonebookData = data
 
-        override fun save(data: PhonebookData) {
-            this.data = data
-            savedData += data
+        override fun changeListing(characterId: UUID, mode: PhonebookListingMode): PhonebookListingChange {
+            changeRequests += PhonebookListingChangeRequest(characterId, mode)
+            val shouldList = when (mode) {
+                PhonebookListingMode.Toggle -> characterId !in data.listings
+                PhonebookListingMode.Listed -> true
+                PhonebookListingMode.Unlisted -> false
+            }
+            data = if (shouldList) {
+                data.copy(listings = data.listings + characterId)
+            } else {
+                data.copy(listings = data.listings - characterId)
+            }
+            return PhonebookListingChange(data, listed = shouldList)
         }
     }
 

@@ -2,30 +2,6 @@ package com.danidipp.sneakymisc.phonebook
 
 import java.util.UUID
 
-data class PhonebookMessage(
-    val key: String,
-    val arguments: Map<String, String> = emptyMap(),
-)
-
-object PhonebookMessageKeys {
-    const val NO_ACTIVE_CHARACTER = "sneakymisc.phonebook.no_active_character"
-    const val TARGET_OFFLINE = "sneakymisc.phonebook.target_offline"
-    const val STALE_OWNER = "sneakymisc.phonebook.stale_owner"
-    const val PLAYER_ONLY = "sneakymisc.phonebook.player_only"
-    const val LISTED = "sneakymisc.phonebook.listed"
-    const val UNLISTED = "sneakymisc.phonebook.unlisted"
-    const val CONTACT_REMOVED = "sneakymisc.phonebook.contact_removed"
-    const val CONTACT_ALREADY_REMOVED = "sneakymisc.phonebook.contact_already_removed"
-    const val TITLE = "sneakymisc.phonebook.title"
-
-    fun argumentNames(key: String): List<String> = when (key) {
-        TARGET_OFFLINE -> listOf("character")
-        CONTACT_REMOVED -> listOf("character")
-        CONTACT_ALREADY_REMOVED -> listOf("character")
-        else -> emptyList()
-    }
-}
-
 data class PhonebookBrowserModel(
     val state: PhonebookBrowserState,
     val visibleContacts: List<VisiblePhonebookContact>,
