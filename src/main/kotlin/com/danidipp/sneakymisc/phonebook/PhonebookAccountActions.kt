@@ -7,6 +7,15 @@ interface PhonebookDataStore {
     fun save(data: PhonebookData)
 }
 
+data class PhonebookContactRemoval(
+    val data: PhonebookData,
+    val removedContact: PhonebookContact?,
+)
+
+interface PhonebookContactStore : PhonebookDataStore {
+    fun removeContact(firstCharacterId: UUID, secondCharacterId: UUID): PhonebookContactRemoval
+}
+
 enum class PhonebookListingMode {
     Toggle,
     Listed,

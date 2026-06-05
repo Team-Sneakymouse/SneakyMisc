@@ -14,10 +14,14 @@ object PhonebookMessageKeys {
     const val PLAYER_ONLY = "sneakymisc.phonebook.player_only"
     const val LISTED = "sneakymisc.phonebook.listed"
     const val UNLISTED = "sneakymisc.phonebook.unlisted"
+    const val CONTACT_REMOVED = "sneakymisc.phonebook.contact_removed"
+    const val CONTACT_ALREADY_REMOVED = "sneakymisc.phonebook.contact_already_removed"
     const val TITLE = "sneakymisc.phonebook.title"
 
     fun argumentNames(key: String): List<String> = when (key) {
         TARGET_OFFLINE -> listOf("character")
+        CONTACT_REMOVED -> listOf("character")
+        CONTACT_ALREADY_REMOVED -> listOf("character")
         else -> emptyList()
     }
 }
@@ -32,6 +36,7 @@ interface PhonebookViewer {
     val permitted: Boolean
     fun sendMessage(message: PhonebookMessage)
     fun openInventory(model: PhonebookBrowserModel)
+    fun closeInventory() = Unit
 }
 
 enum class PhonebookOpenResult {

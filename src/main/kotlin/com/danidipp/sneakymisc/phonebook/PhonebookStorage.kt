@@ -41,7 +41,7 @@ data class PhonebookData(val listings: Set<UUID> = emptySet(), val contacts: Map
         contacts[PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)]
 }
 
-class PhonebookStorage(private val configPath: Path, private val logger: Logger) : PhonebookDataStore {
+class PhonebookStorage(private val configPath: Path, private val logger: Logger) : PhonebookContactStore {
     fun addContact(firstCharacterId: UUID, firstAccountId: UUID, secondCharacterId: UUID, secondAccountId: UUID): Boolean {
         val data = load()
         val key = PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)
@@ -50,6 +50,15 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         val contact = PhonebookContact.between(firstCharacterId, firstAccountId, secondCharacterId, secondAccountId)
         save(data.copy(contacts = data.contacts + (key to contact)))
         return true
+    }
+
+    override fun removeContact(firstCharacterId: UUID, secondCharacterId: UUID): PhonebookContactRemoval {
+        val data = load()
+        val key = PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)
+        val removedContact = data.contacts[key] ?: return PhonebookContactRemoval(data, removedContact = null)
+        val updatedData = data.copy(contacts = data.contacts - key)
+        save(updatedData)
+        return PhonebookContactRemoval(updatedData, removedContact)
     }
 
     override fun load(): PhonebookData {

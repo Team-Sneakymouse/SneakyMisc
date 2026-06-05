@@ -54,4 +54,24 @@ class PhonebookMessageTest {
         assertFalse(GlobalTranslator.render(Component.translatable(PhonebookMessageKeys.LISTED), Locale.US) is TranslatableComponent)
         assertFalse(GlobalTranslator.render(Component.translatable(PhonebookMessageKeys.UNLISTED), Locale.US) is TranslatableComponent)
     }
+
+    @Test
+    fun `contact removal feedback keys resolve with named Character arguments`() {
+        PhonebookTranslations.registerDefaults()
+
+        assertEquals(listOf("character"), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.CONTACT_REMOVED))
+        assertEquals(listOf("character"), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.CONTACT_ALREADY_REMOVED))
+        assertFalse(
+            GlobalTranslator.render(
+                PhonebookMessage(PhonebookMessageKeys.CONTACT_REMOVED, mapOf("character" to "Removed")).asComponent(),
+                Locale.US,
+            ) is TranslatableComponent
+        )
+        assertFalse(
+            GlobalTranslator.render(
+                PhonebookMessage(PhonebookMessageKeys.CONTACT_ALREADY_REMOVED, mapOf("character" to "Owner")).asComponent(),
+                Locale.US,
+            ) is TranslatableComponent
+        )
+    }
 }

@@ -8,6 +8,7 @@ import org.bukkit.NamespacedKey
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.inventory.Inventory
@@ -65,10 +66,7 @@ class PhonebookInventoryFactory(plugin: Plugin) {
 }
 
 class PhonebookGuiListener(
-    private val storage: PhonebookStorage,
-    private val directory: PhonebookDirectory,
-    private val callRouter: PhonebookCallRouter,
-    private val browser: PhonebookBrowser,
+    private val guiActions: PhonebookGuiActions,
     private val inventoryFactory: PhonebookInventoryFactory,
 ) : Listener {
     @EventHandler
@@ -77,21 +75,18 @@ class PhonebookGuiListener(
         event.isCancelled = true
 
         if (event.clickedInventory != event.view.topInventory) return
-        if (!event.isLeftClick) return
 
         val selectedContactCharacterId = inventoryFactory.selectedContactCharacter(event.currentItem) ?: return
         val player = event.whoClicked as? Player ?: return
-        val data = storage.load()
 
-        when (callRouter.leftClickContact(data, holder.state, selectedContactCharacterId)) {
-            PhonebookContactClickResult.Called -> player.closeInventory()
-            PhonebookContactClickResult.TargetOffline -> {
-                sendTargetOffline(player, data, holder.state, selectedContactCharacterId)
-                refresh(player, data, holder.state)
-            }
-            PhonebookContactClickResult.StaleOwner -> player.sendMessage(PhonebookMessage(PhonebookMessageKeys.STALE_OWNER).asComponent())
-            PhonebookContactClickResult.MissingContact -> refresh(player, data, holder.state)
+        if (event.click == ClickType.SWAP_OFFHAND) {
+            guiActions.removeContact(BukkitPhonebookViewer(player, inventoryFactory), holder.state, selectedContactCharacterId)
+            return
         }
+
+        if (!event.isLeftClick) return
+
+        guiActions.callContact(BukkitPhonebookViewer(player, inventoryFactory), holder.state, selectedContactCharacterId)
     }
 
     @EventHandler
@@ -101,25 +96,4 @@ class PhonebookGuiListener(
         }
     }
 
-    private fun sendTargetOffline(
-        player: Player,
-        data: PhonebookData,
-        state: PhonebookBrowserState,
-        selectedContactCharacterId: UUID,
-    ) {
-        val contact = data.contactBetween(state.ownerCharacterId, selectedContactCharacterId)
-        val accountId = contact?.accountFor(selectedContactCharacterId)
-        val characterName = accountId?.let { directory.character(it, selectedContactCharacterId)?.displayName }
-            ?: selectedContactCharacterId.toString()
-        player.sendMessage(
-            PhonebookMessage(
-                PhonebookMessageKeys.TARGET_OFFLINE,
-                mapOf("character" to characterName),
-            ).asComponent()
-        )
-    }
-
-    private fun refresh(player: Player, data: PhonebookData, state: PhonebookBrowserState) {
-        player.openInventory(inventoryFactory.create(browser.refresh(data, state)))
-    }
 }

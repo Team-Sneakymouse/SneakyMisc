@@ -1,6 +1,6 @@
 # Remove A Phonebook Contact
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -27,3 +27,7 @@ Let a player remove a visible Phonebook Contact from the Phonebook GUI by pressi
 ## Blocked by
 
 - `.scratch/phonebook/issues/01-call-a-persisted-phonebook-contact.md`
+
+## Comments
+
+- 2026-06-05: Implemented swap-offhand Phonebook Contact removal through a small `PhonebookGuiActions` module so removal policy stays out of `PhonebookGuiListener`. Removal validates the viewer is still embodying the GUI owner Character via `PhonebookActiveCharacters`, delegates load/mutate/save to storage-owned `removeContact`, preserves Phonebook Listing state, sends local keyed feedback with named Character arguments, refreshes the GUI, and leaves the counterparty uninvolved. Full Gradle test suite passes; remaining validation should be a human Minecraft-client smoke test for actual swap-offhand behavior in the inventory UI.

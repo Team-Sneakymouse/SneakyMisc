@@ -48,6 +48,10 @@ class BukkitPhonebookViewer(private val player: Player, private val inventoryFac
     override fun openInventory(model: PhonebookBrowserModel) {
         player.openInventory(inventoryFactory.create(model))
     }
+
+    override fun closeInventory() {
+        player.closeInventory()
+    }
 }
 
 fun PhonebookMessage.asComponent(): Component = Component.translatable(key,PhonebookMessageKeys.argumentNames(key).map { name ->
@@ -71,6 +75,8 @@ object PhonebookTranslations {
         store.register(PhonebookMessageKeys.PLAYER_ONLY, Locale.US, "<red>Only players can open a Phonebook.")
         store.register(PhonebookMessageKeys.LISTED, Locale.US, "<green>Your Character is now listed in Phonebooks.")
         store.register(PhonebookMessageKeys.UNLISTED, Locale.US, "<yellow>Your Character is now hidden from Phonebooks.")
+        store.register(PhonebookMessageKeys.CONTACT_REMOVED, Locale.US, "<green>Removed <gold>{0}</gold> from your Phonebook.")
+        store.register(PhonebookMessageKeys.CONTACT_ALREADY_REMOVED, Locale.US, "<yellow><gold>{0}</gold>'s Phonebook was already updated.")
         store.register(PhonebookMessageKeys.TITLE, Locale.US, "<gold>Phonebook")
         GlobalTranslator.translator().addSource(store)
         registered = true

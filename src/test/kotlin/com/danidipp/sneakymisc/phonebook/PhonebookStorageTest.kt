@@ -139,6 +139,50 @@ class PhonebookStorageTest {
     }
 
     @Test
+    fun `removing a contact deletes the bidirectional relationship without changing listings`() {
+        val ownerCharacter = UUID.fromString("30000000-0000-0000-0000-000000000000")
+        val ownerAccount = UUID.fromString("00000000-0000-0000-0000-000000000003")
+        val removedCharacter = UUID.fromString("40000000-0000-0000-0000-000000000000")
+        val removedAccount = UUID.fromString("00000000-0000-0000-0000-000000000004")
+        val remainingLowerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
+        val remainingLowerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val remainingHigherCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
+        val remainingHigherAccount = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val configPath = createTempFile(prefix = "phonebook-remove", suffix = ".yml")
+        val storage = PhonebookStorage(configPath, logger = noOpLogger())
+        val listings = setOf(ownerCharacter, removedCharacter, remainingLowerCharacter)
+        val remainingContact = PhonebookContact.between(
+            remainingLowerCharacter,
+            remainingLowerAccount,
+            remainingHigherCharacter,
+            remainingHigherAccount,
+        )
+        storage.save(
+            PhonebookData(
+                listings = listings,
+                contacts = mapOf(
+                    PhonebookContactKeys.forCharacters(ownerCharacter, removedCharacter) to
+                        PhonebookContact.between(ownerCharacter, ownerAccount, removedCharacter, removedAccount),
+                    PhonebookContactKeys.forCharacters(remainingLowerCharacter, remainingHigherCharacter) to remainingContact,
+                ),
+            )
+        )
+
+        val result = storage.removeContact(removedCharacter, ownerCharacter)
+
+        assertEquals(
+            PhonebookContact.between(ownerCharacter, ownerAccount, removedCharacter, removedAccount),
+            result.removedContact,
+        )
+        assertEquals(listings, result.data.listings)
+        assertEquals(
+            mapOf(PhonebookContactKeys.forCharacters(remainingLowerCharacter, remainingHigherCharacter) to remainingContact),
+            storage.load().contacts,
+        )
+        assertEquals(listings, storage.load().listings)
+    }
+
+    @Test
     fun `saving canonicalizes contact keys before sorting and deduplicating output`() {
         val lowerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val lowerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
