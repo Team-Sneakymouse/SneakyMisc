@@ -32,7 +32,7 @@ class SneakyMisc : JavaPlugin() {
         registerModule(PaintingsModule())
         if (dependenciesAvailable(LomArchiveModule.deps))
             if (Bukkit.getWorld("lom_archive") != null)  registerModule(LomArchiveModule(logger, "lom_archive"))
-        if (dependenciesAvailable(PhonebookModule.deps))        registerModule(PhonebookModule(logger))
+        if (dependenciesAvailable(PhonebookModule.deps))        registerModule(PhonebookModule(this))
 //        if (dependenciesAvailable(NoPhysicsModule.deps))        registerModule(NoPhysicsModule())
     }
     private fun dependenciesAvailable(dependencies: List<String>) = dependencies.all { Bukkit.getPluginManager().isPluginEnabled(it) }

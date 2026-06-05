@@ -1,10 +1,40 @@
 package com.danidipp.sneakymisc.phonebook
 
 import com.danidipp.sneakymisc.SneakyModule
-import java.util.logging.Logger
+import com.danidipp.sneakymisc.SneakyMiscCommand
+import org.bukkit.plugin.java.JavaPlugin
 
-class PhonebookModule(private val logger: Logger) : SneakyModule() {
+class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
     companion object {
         val deps = listOf("SneakyCharacterManager", "SneakyCellPhones")
+    }
+    private val storage = PhonebookStorage(
+        configPath = plugin.dataPath.resolve("phonebooks.yml"),
+        logger = plugin.logger,
+    )
+    private val directory = BukkitPhonebookDirectory()
+    private val resolver = PhonebookResolver(directory)
+    private val browser = PhonebookBrowser(
+        resolver = resolver,
+        renderer = PhonebookBrowserRenderer(),
+    )
+    private val inventoryFactory = PhonebookInventoryFactory(plugin)
+    private val callRouter = PhonebookCallRouter(directory, SneakyCellPhonesCaller())
+    private val openHandler = PhonebookOpenHandler(
+        dataProvider = storage::load,
+        directory = directory,
+        browser = browser,
+    )
+
+    override val commands = listOf(
+        SneakyMiscCommand(PhonebookCommand(openHandler, inventoryFactory).build(), "Open the active Character's Phonebook")
+    )
+
+    override val listeners = listOf(
+        PhonebookGuiListener(storage, directory, callRouter, browser, inventoryFactory)
+    )
+
+    init {
+        PhonebookTranslations.registerDefaults()
     }
 }
