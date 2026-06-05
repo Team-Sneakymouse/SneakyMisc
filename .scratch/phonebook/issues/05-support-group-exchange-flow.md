@@ -1,6 +1,6 @@
 # Support Group Exchange Flow
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -29,3 +29,4 @@ Extend Phonebook Exchange so a player can quickly send contact requests to multi
 ## Comments
 
 - Architecture note from 2026-06-05 review: extend the Exchange/Seeking state-machine module from issue 04 for group exchange rather than adding group-specific listener state. Multiple outgoing requests, independent resolution, initiator quit, and target-seeking cancellation should be state-machine transitions with thin Bukkit adapters.
+- 2026-06-06: Implemented group exchange support by extending `PhonebookExchangeActions`. Multiple outgoing exchanges from one initiator now have regression coverage for one-dialog-per-seeking-click behavior, independent decline/accept resolution, persisted accepted contacts, listing-on-accept, and keyed feedback. Valid incoming exchanges cancel the target's active Phonebook Seeking timeout before opening the decision GUI. Added `accountQuit` so Bukkit quit events cancel only active seeking for the quitting account while leaving already opened outgoing exchanges resolvable and still cancelling unresolved exchanges where the quitter is the target. Full Gradle test suite passes with `.\gradlew.bat test`.

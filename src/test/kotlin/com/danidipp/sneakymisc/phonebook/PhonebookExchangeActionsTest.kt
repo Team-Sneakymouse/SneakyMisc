@@ -148,6 +148,54 @@ class PhonebookExchangeActionsTest {
     }
 
     @Test
+    fun `valid damage hit cancels target Phonebook Seeking before opening their exchange GUI`() {
+        val initiatorAccount = account("1")
+        val targetAccount = account("2")
+        val initiatorCharacter = character("1")
+        val targetCharacter = character("2")
+        val initiatorSnapshot = PhonebookCharacter(initiatorAccount, initiatorCharacter, "Initiator Character")
+        val targetSnapshot = PhonebookCharacter(targetAccount, targetCharacter, "Target Character")
+        val actions = exchangeActions(
+            activeCharacters = FakePhonebookActiveCharacters(
+                activeCharacters = mapOf(
+                    initiatorAccount to initiatorCharacter,
+                    targetAccount to targetCharacter,
+                ),
+            ),
+            directory = FakePhonebookDirectory(characters = listOf(initiatorSnapshot, targetSnapshot)),
+        )
+        val targetSeeking = actions.startSeeking(targetAccount)
+        val targetToken = (targetSeeking.effects.last() as PhonebookExchangeEffect.ScheduleSeekingTimeout).token
+        val initiatorSeeking = actions.startSeeking(initiatorAccount)
+        val initiatorToken = (initiatorSeeking.effects.last() as PhonebookExchangeEffect.ScheduleSeekingTimeout).token
+
+        val opened = actions.damageSeekingTarget(initiatorAccount, targetAccount)
+        val targetTimeout = actions.seekingTimedOut(targetAccount, targetToken)
+
+        assertEquals(PhonebookExchangeResult.ExchangeOpened, opened.result)
+        assertEquals(
+            listOf(
+                PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccount, initiatorToken),
+                PhonebookExchangeEffect.CancelSeekingTimeout(targetAccount, targetToken),
+                PhonebookExchangeEffect.SendMessage(
+                    initiatorAccount,
+                    PhonebookMessage(
+                        PhonebookMessageKeys.EXCHANGE_REQUEST_SENT,
+                        mapOf("character" to "Target Character"),
+                    ),
+                ),
+                PhonebookExchangeEffect.OpenExchangeDecision(
+                    targetAccount,
+                    PhonebookExchangeDecisionModel(PhonebookExchangeId(1), initiatorSnapshot, targetSnapshot),
+                ),
+            ),
+            opened.effects,
+        )
+        assertEquals(PhonebookExchangeResult.NoSeeking, targetTimeout.result)
+        assertEquals(emptyList(), targetTimeout.effects)
+    }
+
+    @Test
     fun `hard invalid damage hit cancels seeking when target has no active Character`() {
         val initiatorAccount = account("1")
         val targetAccount = account("2")
@@ -183,7 +231,7 @@ class PhonebookExchangeActionsTest {
             )
         )
         val actions = exchangeActions(
-            phonebooks = RecordingPhonebookExchangeStore(initialData),
+            phonebooks = RecordingPhonebookStore(initialData),
             activeCharacters = FakePhonebookActiveCharacters(
                 activeCharacters = mapOf(
                     initiatorAccount to initiatorCharacter,
@@ -254,7 +302,7 @@ class PhonebookExchangeActionsTest {
         val targetCharacter = character("2")
         val initiatorSnapshot = PhonebookCharacter(initiatorAccount, initiatorCharacter, "Initiator Character")
         val targetSnapshot = PhonebookCharacter(targetAccount, targetCharacter, "Target Character")
-        val phonebooks = RecordingPhonebookExchangeStore(PhonebookData())
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
         val actions = exchangeActions(
             phonebooks = phonebooks,
             activeCharacters = FakePhonebookActiveCharacters(
@@ -308,7 +356,7 @@ class PhonebookExchangeActionsTest {
         val targetAccount = account("2")
         val initiatorCharacter = character("1")
         val targetCharacter = character("2")
-        val phonebooks = RecordingPhonebookExchangeStore(PhonebookData())
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
         val actions = exchangeActions(
             phonebooks = phonebooks,
             activeCharacters = FakePhonebookActiveCharacters(
@@ -361,7 +409,7 @@ class PhonebookExchangeActionsTest {
         val targetAccount = account("2")
         val initiatorCharacter = character("1")
         val targetCharacter = character("2")
-        val phonebooks = RecordingPhonebookExchangeStore(PhonebookData())
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
         val actions = exchangeActions(
             phonebooks = phonebooks,
             activeCharacters = FakePhonebookActiveCharacters(
@@ -407,6 +455,76 @@ class PhonebookExchangeActionsTest {
         assertEquals(PhonebookExchangeResult.NoExchange, closeAfterDecline.result)
         assertEquals(PhonebookData(), phonebooks.load())
         assertEquals(emptyList(), phonebooks.savedData)
+    }
+
+    @Test
+    fun `multiple outgoing requests from one initiator resolve independently`() {
+        val initiatorAccount = account("1")
+        val firstTargetAccount = account("2")
+        val secondTargetAccount = account("3")
+        val initiatorCharacter = character("1")
+        val firstTargetCharacter = character("2")
+        val secondTargetCharacter = character("3")
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
+        val actions = exchangeActions(
+            phonebooks = phonebooks,
+            activeCharacters = FakePhonebookActiveCharacters(
+                activeCharacters = mapOf(
+                    initiatorAccount to initiatorCharacter,
+                    firstTargetAccount to firstTargetCharacter,
+                    secondTargetAccount to secondTargetCharacter,
+                ),
+            ),
+            directory = FakePhonebookDirectory(
+                characters = listOf(
+                    PhonebookCharacter(initiatorAccount, initiatorCharacter, "Initiator Character"),
+                    PhonebookCharacter(firstTargetAccount, firstTargetCharacter, "First Target"),
+                    PhonebookCharacter(secondTargetAccount, secondTargetCharacter, "Second Target"),
+                ),
+            ),
+        )
+
+        val firstOpen = actions.damageSeekingTargetAfterStart(initiatorAccount, firstTargetAccount)
+        val secondOpenWithoutSeeking = actions.damageSeekingTarget(initiatorAccount, secondTargetAccount)
+        val secondOpen = actions.damageSeekingTargetAfterStart(initiatorAccount, secondTargetAccount)
+        val firstExchangeId = (firstOpen.effects.last() as PhonebookExchangeEffect.OpenExchangeDecision).model.exchangeId
+        val secondExchangeId = (secondOpen.effects.last() as PhonebookExchangeEffect.OpenExchangeDecision).model.exchangeId
+
+        val firstDeclined = actions.decline(firstExchangeId, firstTargetAccount)
+        val secondAccepted = actions.accept(secondExchangeId, secondTargetAccount)
+
+        assertEquals(PhonebookExchangeResult.ExchangeOpened, firstOpen.result)
+        assertEquals(PhonebookExchangeResult.NoSeeking, secondOpenWithoutSeeking.result)
+        assertEquals(emptyList(), secondOpenWithoutSeeking.effects)
+        assertEquals(PhonebookExchangeResult.ExchangeOpened, secondOpen.result)
+        assertEquals(PhonebookExchangeResult.ExchangeDeclined, firstDeclined.result)
+        assertEquals(
+            listOf(
+                PhonebookExchangeEffect.SendMessage(
+                    initiatorAccount,
+                    PhonebookMessage(
+                        PhonebookMessageKeys.EXCHANGE_DECLINED_INITIATOR,
+                        mapOf("character" to "First Target"),
+                    ),
+                ),
+                PhonebookExchangeEffect.SendMessage(
+                    firstTargetAccount,
+                    PhonebookMessage(
+                        PhonebookMessageKeys.EXCHANGE_DECLINED_TARGET,
+                        mapOf("character" to "Initiator Character"),
+                    ),
+                ),
+                PhonebookExchangeEffect.ScheduleExchangeClose(firstTargetAccount, firstExchangeId),
+            ),
+            firstDeclined.effects,
+        )
+        assertEquals(PhonebookExchangeResult.ExchangeAccepted, secondAccepted.result)
+        assertEquals(
+            PhonebookContact.between(initiatorCharacter, initiatorAccount, secondTargetCharacter, secondTargetAccount),
+            phonebooks.load().contactBetween(initiatorCharacter, secondTargetCharacter),
+        )
+        assertEquals(null, phonebooks.load().contactBetween(initiatorCharacter, firstTargetCharacter))
+        assertEquals(setOf(initiatorCharacter, secondTargetCharacter), phonebooks.load().listings)
     }
 
     @Test
@@ -462,7 +580,7 @@ class PhonebookExchangeActionsTest {
         val targetAccount = account("2")
         val initiatorCharacter = character("1")
         val targetCharacter = character("2")
-        val phonebooks = RecordingPhonebookExchangeStore(PhonebookData())
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
         val actions = exchangeActions(
             phonebooks = phonebooks,
             activeCharacters = FakePhonebookActiveCharacters(
@@ -502,8 +620,58 @@ class PhonebookExchangeActionsTest {
         assertEquals(emptyList(), phonebooks.savedData)
     }
 
+    @Test
+    fun `initiator quit cancels only active seeking and leaves already opened exchanges resolvable`() {
+        val initiatorAccount = account("1")
+        val firstTargetAccount = account("2")
+        val secondTargetAccount = account("3")
+        val initiatorCharacter = character("1")
+        val firstTargetCharacter = character("2")
+        val secondTargetCharacter = character("3")
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
+        val actions = exchangeActions(
+            phonebooks = phonebooks,
+            activeCharacters = FakePhonebookActiveCharacters(
+                activeCharacters = mapOf(
+                    initiatorAccount to initiatorCharacter,
+                    firstTargetAccount to firstTargetCharacter,
+                    secondTargetAccount to secondTargetCharacter,
+                ),
+            ),
+            directory = FakePhonebookDirectory(
+                characters = listOf(
+                    PhonebookCharacter(initiatorAccount, initiatorCharacter, "Initiator Character"),
+                    PhonebookCharacter(firstTargetAccount, firstTargetCharacter, "First Target"),
+                    PhonebookCharacter(secondTargetAccount, secondTargetCharacter, "Second Target"),
+                ),
+            ),
+        )
+        val firstOpen = actions.damageSeekingTargetAfterStart(initiatorAccount, firstTargetAccount)
+        val firstExchangeId = (firstOpen.effects.last() as PhonebookExchangeEffect.OpenExchangeDecision).model.exchangeId
+        val activeSeeking = actions.startSeeking(initiatorAccount)
+        val activeSeekingToken = (activeSeeking.effects.last() as PhonebookExchangeEffect.ScheduleSeekingTimeout).token
+
+        val quit = actions.accountQuit(initiatorAccount)
+        val timedOutAfterQuit = actions.seekingTimedOut(initiatorAccount, activeSeekingToken)
+        val acceptedAfterQuit = actions.accept(firstExchangeId, firstTargetAccount)
+
+        assertEquals(PhonebookExchangeResult.NoExchange, quit.result)
+        assertEquals(
+            listOf(PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccount, activeSeekingToken)),
+            quit.effects,
+        )
+        assertEquals(PhonebookExchangeResult.NoSeeking, timedOutAfterQuit.result)
+        assertEquals(emptyList(), timedOutAfterQuit.effects)
+        assertEquals(PhonebookExchangeResult.ExchangeAccepted, acceptedAfterQuit.result)
+        assertEquals(
+            PhonebookContact.between(initiatorCharacter, initiatorAccount, firstTargetCharacter, firstTargetAccount),
+            phonebooks.load().contactBetween(initiatorCharacter, firstTargetCharacter),
+        )
+        assertEquals(null, phonebooks.load().contactBetween(initiatorCharacter, secondTargetCharacter))
+    }
+
     private fun exchangeActions(
-        phonebooks: PhonebookExchangeStore = RecordingPhonebookExchangeStore(PhonebookData()),
+        phonebooks: PhonebookExchangeStore = RecordingPhonebookStore(PhonebookData()),
         activeCharacters: PhonebookActiveCharacters = FakePhonebookActiveCharacters(),
         directory: PhonebookDirectory = FakePhonebookDirectory(),
     ): PhonebookExchangeActions =
@@ -512,40 +680,6 @@ class PhonebookExchangeActionsTest {
             activeCharacters = activeCharacters,
             directory = directory,
         )
-
-    private class RecordingPhonebookExchangeStore(initialData: PhonebookData) : PhonebookExchangeStore {
-        private var data = initialData
-        val savedData = mutableListOf<PhonebookData>()
-
-        override fun load(): PhonebookData = data
-
-        fun save(data: PhonebookData) {
-            this.data = data
-            savedData += data
-        }
-
-        override fun acceptExchange(
-            initiator: PhonebookCharacter,
-            target: PhonebookCharacter,
-        ): PhonebookExchangePersistenceResult {
-            val key = PhonebookContactKeys.forCharacters(initiator.characterId, target.characterId)
-            if (key in data.contacts) {
-                return PhonebookExchangePersistenceResult.AlreadyExists(data)
-            }
-
-            val updated = data.copy(
-                listings = data.listings + initiator.characterId + target.characterId,
-                contacts = data.contacts + (key to PhonebookContact.between(
-                    initiator.characterId,
-                    initiator.accountId,
-                    target.characterId,
-                    target.accountId,
-                )),
-            )
-            save(updated)
-            return PhonebookExchangePersistenceResult.Created(updated)
-        }
-    }
 
     private class FakePhonebookActiveCharacters(
         private val activeCharacters: Map<UUID, UUID> = emptyMap(),

@@ -12,7 +12,7 @@ class PhonebookGuiActions(
     private val phonebooks: PhonebookContactStore,
     private val activeCharacters: PhonebookActiveCharacters,
     private val directory: PhonebookDirectory,
-    private val callRouter: PhonebookCallRouter,
+    private val caller: PhonebookCaller,
     private val browser: PhonebookBrowser,
 ) {
     fun callContact(
@@ -21,26 +21,33 @@ class PhonebookGuiActions(
         selectedContactCharacterId: UUID,
     ): PhonebookContactClickResult {
         val data = phonebooks.load()
-
-        return when (val result = callRouter.leftClickContact(data, state, selectedContactCharacterId)) {
-            PhonebookContactClickResult.Called -> {
-                viewer.closeInventory()
-                result
-            }
-            PhonebookContactClickResult.TargetOffline -> {
-                sendTargetOffline(viewer, data, state, selectedContactCharacterId)
-                viewer.openInventory(browser.refresh(data, state))
-                result
-            }
-            PhonebookContactClickResult.StaleOwner -> {
-                viewer.sendMessage(PhonebookMessageCatalog.staleOwner())
-                result
-            }
-            PhonebookContactClickResult.MissingContact -> {
-                viewer.openInventory(browser.refresh(data, state))
-                result
-            }
+        if (activeCharacters.activeCharacter(state.viewerAccountId) != state.ownerCharacterId) {
+            viewer.sendMessage(PhonebookMessageCatalog.staleOwner())
+            return PhonebookContactClickResult.StaleOwner
         }
+
+        val contact = data.contactBetween(state.ownerCharacterId, selectedContactCharacterId)
+        val targetAccountId = contact?.accountFor(selectedContactCharacterId)
+        if (targetAccountId == null) {
+            viewer.openInventory(browser.refresh(data, state))
+            return PhonebookContactClickResult.MissingContact
+        }
+
+        if (!directory.isOnline(targetAccountId)) {
+            sendTargetOffline(viewer, data, state, selectedContactCharacterId)
+            viewer.openInventory(browser.refresh(data, state))
+            return PhonebookContactClickResult.TargetOffline
+        }
+
+        val targetCharacter = directory.character(targetAccountId, selectedContactCharacterId)
+        if (targetCharacter == null) {
+            viewer.openInventory(browser.refresh(data, state))
+            return PhonebookContactClickResult.MissingContact
+        }
+
+        caller.startOrReuseCall(state.viewerAccountId, targetAccountId, targetCharacter.displayName)
+        viewer.closeInventory()
+        return PhonebookContactClickResult.Called
     }
 
     fun removeContact(

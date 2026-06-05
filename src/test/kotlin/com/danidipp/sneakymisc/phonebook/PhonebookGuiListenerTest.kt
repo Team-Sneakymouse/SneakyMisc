@@ -97,7 +97,7 @@ class PhonebookGuiListenerTest {
                 phonebooks = storage,
                 activeCharacters = directory,
                 directory = directory,
-                callRouter = PhonebookCallRouter(directory, directory, NoOpPhonebookCaller),
+                caller = NoOpPhonebookCaller,
                 browser = browser,
             ),
             inventoryFactory = inventoryFactory,

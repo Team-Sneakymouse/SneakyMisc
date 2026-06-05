@@ -44,8 +44,8 @@ class BukkitPhonebookExchangeController(
         apply(actions.close(exchangeId, targetAccountId))
     }
 
-    fun targetQuit(targetAccountId: UUID) {
-        apply(actions.targetQuit(targetAccountId))
+    fun accountQuit(accountId: UUID) {
+        apply(actions.accountQuit(accountId))
     }
 
     private fun apply(outcome: PhonebookExchangeOutcome) {
@@ -129,7 +129,7 @@ class PhonebookExchangeListener(
 
     @EventHandler
     fun onPlayerQuit(event: PlayerQuitEvent) {
-        controller.targetQuit(event.player.uniqueId)
+        controller.accountQuit(event.player.uniqueId)
     }
 
     private fun EntityDamageByEntityEvent.damagerPlayer(): Player? =

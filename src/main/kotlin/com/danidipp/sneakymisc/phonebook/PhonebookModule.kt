@@ -20,7 +20,6 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
     )
     private val inventoryFactory = PhonebookInventoryFactory(plugin)
     private val exchangeInventoryFactory = PhonebookExchangeInventoryFactory(plugin)
-    private val callRouter = PhonebookCallRouter(directory, directory, SneakyCellPhonesCaller())
     private val exchangeActions = PhonebookExchangeActions(
         phonebooks = storage,
         activeCharacters = directory,
@@ -35,7 +34,7 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
         phonebooks = storage,
         activeCharacters = directory,
         directory = directory,
-        callRouter = callRouter,
+        caller = SneakyCellPhonesCaller(),
         browser = browser,
     )
     private val accountActions = PhonebookAccountActions(

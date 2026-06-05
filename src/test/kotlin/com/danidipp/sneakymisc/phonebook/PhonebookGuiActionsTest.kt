@@ -17,7 +17,7 @@ class PhonebookGuiActionsTest {
                     PhonebookContact.between(ownerCharacter, viewerAccount, targetCharacter, targetAccount)
             ),
         )
-        val phonebooks = RecordingPhonebookContactStore(data)
+        val phonebooks = RecordingPhonebookStore(data)
         val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
         val directory = FakePhonebookDirectory(
             characters = listOf(PhonebookCharacter(targetAccount, targetCharacter, "Target Character")),
@@ -53,7 +53,7 @@ class PhonebookGuiActionsTest {
                     PhonebookContact.between(ownerCharacter, viewerAccount, targetCharacter, targetAccount)
             ),
         )
-        val phonebooks = RecordingPhonebookContactStore(data)
+        val phonebooks = RecordingPhonebookStore(data)
         val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
         val directory = FakePhonebookDirectory(
             characters = listOf(PhonebookCharacter(targetAccount, targetCharacter, "Target Character")),
@@ -97,7 +97,7 @@ class PhonebookGuiActionsTest {
         val viewerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val ownerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val selectedContactCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
-        val phonebooks = RecordingPhonebookContactStore(PhonebookData())
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
         val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
         val directory = FakePhonebookDirectory()
         val caller = RecordingPhonebookCaller()
@@ -131,7 +131,7 @@ class PhonebookGuiActionsTest {
         val renderedOwnerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val activeOwnerCharacter = UUID.fromString("11111111-0000-0000-0000-000000000000")
         val selectedContactCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
-        val phonebooks = RecordingPhonebookContactStore(PhonebookData())
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
         val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to activeOwnerCharacter))
         val directory = FakePhonebookDirectory()
         val caller = RecordingPhonebookCaller()
@@ -168,7 +168,7 @@ class PhonebookGuiActionsTest {
                 PhonebookContactKeys.forCharacters(ownerCharacter, remainingCharacter) to remainingContact,
             ),
         )
-        val phonebooks = RecordingPhonebookContactStore(initialData)
+        val phonebooks = RecordingPhonebookStore(initialData)
         val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
         val directory = FakePhonebookDirectory(
             characters = listOf(
@@ -215,7 +215,7 @@ class PhonebookGuiActionsTest {
         val renderedOwnerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val activeOwnerCharacter = UUID.fromString("11111111-0000-0000-0000-000000000000")
         val selectedContactCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
-        val phonebooks = RecordingPhonebookContactStore(PhonebookData())
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
         val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to activeOwnerCharacter))
         val viewer = RecordingPhonebookViewer(viewerAccount)
 
@@ -237,7 +237,7 @@ class PhonebookGuiActionsTest {
         val viewerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val ownerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val selectedContactCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
-        val phonebooks = RecordingPhonebookContactStore(PhonebookData(listings = setOf(ownerCharacter)))
+        val phonebooks = RecordingPhonebookStore(PhonebookData(listings = setOf(ownerCharacter)))
         val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
         val directory = FakePhonebookDirectory(
             characters = listOf(PhonebookCharacter(viewerAccount, ownerCharacter, "Owner Character")),
@@ -283,7 +283,7 @@ class PhonebookGuiActionsTest {
             phonebooks = phonebooks,
             activeCharacters = activeCharacters,
             directory = directory,
-            callRouter = PhonebookCallRouter(directory, activeCharacters, caller),
+            caller = caller,
             browser = PhonebookBrowser(
                 resolver = PhonebookResolver(directory),
                 renderer = PhonebookBrowserRenderer(),
@@ -326,28 +326,6 @@ class PhonebookGuiActionsTest {
         val targetAccountId: UUID,
         val targetDisplayName: String,
     )
-
-    private class RecordingPhonebookContactStore(initialData: PhonebookData) : PhonebookContactStore {
-        private var data = initialData
-        val savedData = mutableListOf<PhonebookData>()
-
-        override fun load(): PhonebookData = data
-
-        fun save(data: PhonebookData) {
-            this.data = data
-            savedData += data
-        }
-
-        override fun removeContact(firstCharacterId: UUID, secondCharacterId: UUID): PhonebookContactRemoval {
-            val key = PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)
-            val removedContact = data.contacts[key]
-            if (removedContact == null) return PhonebookContactRemoval(data, null)
-
-            val updatedData = data.copy(contacts = data.contacts - key)
-            save(updatedData)
-            return PhonebookContactRemoval(updatedData, removedContact)
-        }
-    }
 
     private class FakePhonebookActiveCharacters(
         private val activeCharacters: Map<UUID, UUID>,

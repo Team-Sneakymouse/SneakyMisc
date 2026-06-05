@@ -147,20 +147,28 @@ class PhonebookExchangeActions(
         val exchangeId = PhonebookExchangeId(nextExchangeId++)
         pendingById[exchangeId] = PendingPhonebookExchange(exchangeId, initiator, target)
         seekingByAccount.remove(initiatorAccountId)
+        val targetSeekingToken = seekingByAccount.remove(targetAccountId)
 
         return PhonebookExchangeOutcome(
             PhonebookExchangeResult.ExchangeOpened,
-            listOf(
-                PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccountId, seekingToken),
-                PhonebookExchangeEffect.SendMessage(
-                    initiatorAccountId,
-                    PhonebookMessageCatalog.exchangeRequestSent(target.displayName),
-                ),
-                PhonebookExchangeEffect.OpenExchangeDecision(
-                    targetAccountId,
-                    PhonebookExchangeDecisionModel(exchangeId, initiator, target),
-                ),
-            ),
+            buildList {
+                add(PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccountId, seekingToken))
+                if (targetSeekingToken != null) {
+                    add(PhonebookExchangeEffect.CancelSeekingTimeout(targetAccountId, targetSeekingToken))
+                }
+                add(
+                    PhonebookExchangeEffect.SendMessage(
+                        initiatorAccountId,
+                        PhonebookMessageCatalog.exchangeRequestSent(target.displayName),
+                    )
+                )
+                add(
+                    PhonebookExchangeEffect.OpenExchangeDecision(
+                        targetAccountId,
+                        PhonebookExchangeDecisionModel(exchangeId, initiator, target),
+                    )
+                )
+            },
         )
     }
 
@@ -204,20 +212,34 @@ class PhonebookExchangeActions(
     fun close(exchangeId: PhonebookExchangeId, targetAccountId: UUID): PhonebookExchangeOutcome =
         decline(exchangeId, targetAccountId, scheduleClose = false)
 
-    fun targetQuit(targetAccountId: UUID): PhonebookExchangeOutcome {
-        val pending = pendingById.values.firstOrNull { it.target.accountId == targetAccountId }
-            ?: return PhonebookExchangeOutcome(PhonebookExchangeResult.NoExchange)
-        pendingById.remove(pending.exchangeId)
-        return PhonebookExchangeOutcome(
-            PhonebookExchangeResult.ExchangeDeclined,
-            listOf(
-                PhonebookExchangeEffect.SendMessage(
-                    pending.initiator.accountId,
-                    PhonebookMessageCatalog.exchangeTargetLeft(pending.target.displayName),
-                )
-            ),
-        )
+    fun accountQuit(accountId: UUID): PhonebookExchangeOutcome {
+        val effects = mutableListOf<PhonebookExchangeEffect>()
+        seekingByAccount.remove(accountId)?.let { token ->
+            effects += PhonebookExchangeEffect.CancelSeekingTimeout(accountId, token)
+        }
+
+        val pendingForTarget = pendingById.values
+            .filter { it.target.accountId == accountId }
+            .sortedBy { it.exchangeId.value }
+
+        for (pending in pendingForTarget) {
+            pendingById.remove(pending.exchangeId)
+            effects += PhonebookExchangeEffect.SendMessage(
+                pending.initiator.accountId,
+                PhonebookMessageCatalog.exchangeTargetLeft(pending.target.displayName),
+            )
+        }
+
+        val result = if (pendingForTarget.isEmpty()) {
+            PhonebookExchangeResult.NoExchange
+        } else {
+            PhonebookExchangeResult.ExchangeDeclined
+        }
+        return PhonebookExchangeOutcome(result, effects)
     }
+
+    fun targetQuit(targetAccountId: UUID): PhonebookExchangeOutcome =
+        accountQuit(targetAccountId)
 
     private fun decline(
         exchangeId: PhonebookExchangeId,
