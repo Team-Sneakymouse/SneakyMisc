@@ -1,6 +1,6 @@
 # Toggle Phonebook Listing
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -26,3 +26,7 @@ Add the player command for changing the active Character's Phonebook Listing. Pl
 ## Blocked by
 
 - `.scratch/phonebook/issues/01-call-a-persisted-phonebook-contact.md`
+
+## Comments
+
+- 2026-06-05: Implemented `/phonebook toggle`, `/phonebook toggle listed`, and `/phonebook toggle unlisted` through a keyed listing handler wired into the Phonebook command. Listing changes load and save `phonebooks.yml` immediately through the existing sorted listing storage path, preserve contacts, and feed future visible-contact resolution. Added TDD coverage for toggle modes, explicit modes, permission and active-Character gates, message keys/translations, and visibility impact. Full Gradle test suite passes; remaining validation should be a human Minecraft-client smoke test for command dispatch and in-game feedback.

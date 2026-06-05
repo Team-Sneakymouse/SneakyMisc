@@ -17,7 +17,10 @@ data class VisiblePhonebookContact(
 interface PhonebookDirectory {
     fun character(accountId: UUID, characterId: UUID): PhonebookCharacter?
     fun isOnline(accountId: UUID): Boolean
-    fun activeCharacter(accountId: UUID): UUID? = null
+}
+
+interface PhonebookActiveCharacters {
+    fun activeCharacter(accountId: UUID): UUID?
 }
 
 class PhonebookResolver(private val directory: PhonebookDirectory) {

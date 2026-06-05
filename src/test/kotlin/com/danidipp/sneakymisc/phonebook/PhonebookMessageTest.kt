@@ -44,4 +44,14 @@ class PhonebookMessageTest {
 
         assertFalse(rendered is TranslatableComponent)
     }
+
+    @Test
+    fun `listing feedback keys resolve without named arguments`() {
+        PhonebookTranslations.registerDefaults()
+
+        assertEquals(emptyList(), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.LISTED))
+        assertEquals(emptyList(), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.UNLISTED))
+        assertFalse(GlobalTranslator.render(Component.translatable(PhonebookMessageKeys.LISTED), Locale.US) is TranslatableComponent)
+        assertFalse(GlobalTranslator.render(Component.translatable(PhonebookMessageKeys.UNLISTED), Locale.US) is TranslatableComponent)
+    }
 }

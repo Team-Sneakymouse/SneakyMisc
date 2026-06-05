@@ -12,7 +12,7 @@ import net.sneakycharactermanager.paper.handlers.character.Character
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 
-class BukkitPhonebookDirectory : PhonebookDirectory {
+class BukkitPhonebookDirectory : PhonebookDirectory, PhonebookActiveCharacters {
     override fun activeCharacter(accountId: UUID): UUID? {
         val player = Bukkit.getPlayer(accountId) ?: return null
         return Character.get(player)?.characterUUID?.let(UUID::fromString)
@@ -69,6 +69,8 @@ object PhonebookTranslations {
         store.register(PhonebookMessageKeys.TARGET_OFFLINE, Locale.US, "<red><gold>{0}</gold> is no longer reachable.")
         store.register(PhonebookMessageKeys.STALE_OWNER, Locale.US, "<red>This Phonebook is no longer active.")
         store.register(PhonebookMessageKeys.PLAYER_ONLY, Locale.US, "<red>Only players can open a Phonebook.")
+        store.register(PhonebookMessageKeys.LISTED, Locale.US, "<green>Your Character is now listed in Phonebooks.")
+        store.register(PhonebookMessageKeys.UNLISTED, Locale.US, "<yellow>Your Character is now hidden from Phonebooks.")
         store.register(PhonebookMessageKeys.TITLE, Locale.US, "<gold>Phonebook")
         GlobalTranslator.translator().addSource(store)
         registered = true

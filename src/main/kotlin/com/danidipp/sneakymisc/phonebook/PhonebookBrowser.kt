@@ -12,6 +12,8 @@ object PhonebookMessageKeys {
     const val TARGET_OFFLINE = "sneakymisc.phonebook.target_offline"
     const val STALE_OWNER = "sneakymisc.phonebook.stale_owner"
     const val PLAYER_ONLY = "sneakymisc.phonebook.player_only"
+    const val LISTED = "sneakymisc.phonebook.listed"
+    const val UNLISTED = "sneakymisc.phonebook.unlisted"
     const val TITLE = "sneakymisc.phonebook.title"
 
     fun argumentNames(key: String): List<String> = when (key) {
@@ -68,24 +70,5 @@ class PhonebookBrowser(
     private fun render(data: PhonebookData, state: PhonebookBrowserState): PhonebookBrowserModel {
         val visibleContacts = resolver.visibleContacts(data, state.ownerCharacterId)
         return renderer.render(state, visibleContacts)
-    }
-}
-
-class PhonebookOpenHandler(
-    private val dataProvider: () -> PhonebookData,
-    private val directory: PhonebookDirectory,
-    private val browser: PhonebookBrowser,
-) {
-    fun openPhonebook(viewer: PhonebookViewer): PhonebookOpenResult {
-        if (!viewer.permitted) return PhonebookOpenResult.NoPermission
-
-        val ownerCharacterId = directory.activeCharacter(viewer.accountId)
-            ?: return PhonebookOpenResult.NoActiveCharacter.also {
-                viewer.sendMessage(PhonebookMessage(PhonebookMessageKeys.NO_ACTIVE_CHARACTER))
-            }
-
-        val data = dataProvider()
-        viewer.openInventory(browser.firstPage(data, viewer.accountId, ownerCharacterId))
-        return PhonebookOpenResult.Opened
     }
 }

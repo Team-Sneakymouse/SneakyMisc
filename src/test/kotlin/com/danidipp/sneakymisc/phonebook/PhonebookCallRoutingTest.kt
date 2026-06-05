@@ -23,11 +23,11 @@ class PhonebookCallRoutingTest {
                 PhonebookCharacter(targetAccount, targetCharacter, "Target Character"),
             ),
             onlineAccounts = setOf(targetAccount),
-            activeCharacters = mapOf(viewerAccount to ownerCharacter),
         )
+        val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
         val caller = RecordingPhonebookCaller()
 
-        val result = PhonebookCallRouter(directory, caller)
+        val result = PhonebookCallRouter(directory, activeCharacters, caller)
             .leftClickContact(data, PhonebookBrowserState(viewerAccount, ownerCharacter, page = 0, renderToken = 10), targetCharacter)
 
         assertEquals(PhonebookContactClickResult.Called, result)
@@ -46,8 +46,8 @@ class PhonebookCallRoutingTest {
         val directory = FakePhonebookDirectory(
             characters = listOf(PhonebookCharacter(targetAccount, targetCharacter, "Target Character")),
             onlineAccounts = emptySet(),
-            activeCharacters = mapOf(viewerAccount to ownerCharacter),
         )
+        val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
         val caller = RecordingPhonebookCaller()
         val data = PhonebookData(
             contacts = mapOf(
@@ -56,7 +56,7 @@ class PhonebookCallRoutingTest {
             ),
         )
 
-        val result = PhonebookCallRouter(directory, caller)
+        val result = PhonebookCallRouter(directory, activeCharacters, caller)
             .leftClickContact(data, PhonebookBrowserState(viewerAccount, ownerCharacter, page = 0, renderToken = 10), targetCharacter)
 
         assertEquals(PhonebookContactClickResult.TargetOffline, result)
@@ -72,11 +72,11 @@ class PhonebookCallRoutingTest {
         val directory = FakePhonebookDirectory(
             characters = emptyList(),
             onlineAccounts = emptySet(),
-            activeCharacters = mapOf(viewerAccount to activeOwnerCharacter),
         )
+        val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to activeOwnerCharacter))
         val caller = RecordingPhonebookCaller()
 
-        val result = PhonebookCallRouter(directory, caller)
+        val result = PhonebookCallRouter(directory, activeCharacters, caller)
             .leftClickContact(PhonebookData(), PhonebookBrowserState(viewerAccount, renderedOwnerCharacter, page = 0, renderToken = 10), targetCharacter)
 
         assertEquals(PhonebookContactClickResult.StaleOwner, result)
@@ -100,7 +100,6 @@ class PhonebookCallRoutingTest {
     private class FakePhonebookDirectory(
         characters: List<PhonebookCharacter>,
         private val onlineAccounts: Set<UUID>,
-        private val activeCharacters: Map<UUID, UUID>,
     ) : PhonebookDirectory {
         private val charactersByAccountAndId = characters.associateBy { it.accountId to it.characterId }
 
@@ -108,7 +107,11 @@ class PhonebookCallRoutingTest {
             charactersByAccountAndId[accountId to characterId]
 
         override fun isOnline(accountId: UUID): Boolean = accountId in onlineAccounts
+    }
 
+    private class FakePhonebookActiveCharacters(
+        private val activeCharacters: Map<UUID, UUID>,
+    ) : PhonebookActiveCharacters {
         override fun activeCharacter(accountId: UUID): UUID? = activeCharacters[accountId]
     }
 }

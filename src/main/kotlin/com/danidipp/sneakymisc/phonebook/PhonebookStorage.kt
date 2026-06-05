@@ -41,7 +41,7 @@ data class PhonebookData(val listings: Set<UUID> = emptySet(), val contacts: Map
         contacts[PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)]
 }
 
-class PhonebookStorage(private val configPath: Path, private val logger: Logger) {
+class PhonebookStorage(private val configPath: Path, private val logger: Logger) : PhonebookDataStore {
     fun addContact(firstCharacterId: UUID, firstAccountId: UUID, secondCharacterId: UUID, secondAccountId: UUID): Boolean {
         val data = load()
         val key = PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)
@@ -52,7 +52,7 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         return true
     }
 
-    fun load(): PhonebookData {
+    override fun load(): PhonebookData {
         if (!configPath.toFile().exists()) return PhonebookData()
 
         val yaml = YamlConfiguration.loadConfiguration(configPath.toFile())
@@ -74,7 +74,7 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         return PhonebookData(listings = listings, contacts = contacts)
     }
 
-    fun save(data: PhonebookData) {
+    override fun save(data: PhonebookData) {
         configPath.parent?.createDirectories()
 
         val yaml = YamlConfiguration()

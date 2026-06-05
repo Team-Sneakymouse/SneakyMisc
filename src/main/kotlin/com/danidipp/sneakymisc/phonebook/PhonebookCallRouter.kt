@@ -22,6 +22,7 @@ interface PhonebookCaller {
 
 class PhonebookCallRouter(
     private val directory: PhonebookDirectory,
+    private val activeCharacters: PhonebookActiveCharacters,
     private val caller: PhonebookCaller,
 ) {
     fun leftClickContact(
@@ -29,7 +30,7 @@ class PhonebookCallRouter(
         state: PhonebookBrowserState,
         selectedContactCharacterId: UUID,
     ): PhonebookContactClickResult {
-        if (directory.activeCharacter(state.viewerAccountId) != state.ownerCharacterId)
+        if (activeCharacters.activeCharacter(state.viewerAccountId) != state.ownerCharacterId)
             return PhonebookContactClickResult.StaleOwner
 
         val contact = data.contactBetween(state.ownerCharacterId, selectedContactCharacterId)

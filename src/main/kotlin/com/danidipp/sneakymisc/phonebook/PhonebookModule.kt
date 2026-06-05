@@ -19,15 +19,15 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
         renderer = PhonebookBrowserRenderer(),
     )
     private val inventoryFactory = PhonebookInventoryFactory(plugin)
-    private val callRouter = PhonebookCallRouter(directory, SneakyCellPhonesCaller())
-    private val openHandler = PhonebookOpenHandler(
-        dataProvider = storage::load,
-        directory = directory,
+    private val callRouter = PhonebookCallRouter(directory, directory, SneakyCellPhonesCaller())
+    private val accountActions = PhonebookAccountActions(
+        phonebooks = storage,
+        activeCharacters = directory,
         browser = browser,
     )
 
     override val commands = listOf(
-        SneakyMiscCommand(PhonebookCommand(openHandler, inventoryFactory).build(), "Open the active Character's Phonebook")
+        SneakyMiscCommand(PhonebookCommand(accountActions, inventoryFactory).build(), "Open the active Character's Phonebook")
     )
 
     override val listeners = listOf(
