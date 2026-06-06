@@ -17,7 +17,7 @@ class PhonebookAccountActionsListingTest {
 
         assertEquals(PhonebookListingResult.Listed, result)
         assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Toggle)), repository.listingChangeRequests)
-        assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.LISTED)), viewer.messages)
+        assertEquals(listOf(PhonebookMessage("sneakymisc.phonebook.listed")), viewer.messages)
     }
 
     @Test
@@ -32,7 +32,7 @@ class PhonebookAccountActionsListingTest {
 
         assertEquals(PhonebookListingResult.Unlisted, result)
         assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Toggle)), repository.listingChangeRequests)
-        assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.UNLISTED)), viewer.messages)
+        assertEquals(listOf(PhonebookMessage("sneakymisc.phonebook.unlisted")), viewer.messages)
     }
 
     @Test
@@ -47,7 +47,7 @@ class PhonebookAccountActionsListingTest {
 
         assertEquals(PhonebookListingResult.Listed, result)
         assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Listed)), repository.listingChangeRequests)
-        assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.LISTED)), viewer.messages)
+        assertEquals(listOf(PhonebookMessage("sneakymisc.phonebook.listed")), viewer.messages)
     }
 
     @Test
@@ -70,7 +70,7 @@ class PhonebookAccountActionsListingTest {
 
         assertEquals(PhonebookListingResult.Unlisted, result)
         assertEquals(listOf(PhonebookListingChangeRequest(characterId, PhonebookListingMode.Unlisted)), repository.listingChangeRequests)
-        assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.UNLISTED)), viewer.messages)
+        assertEquals(listOf(PhonebookMessage("sneakymisc.phonebook.unlisted")), viewer.messages)
     }
 
     @Test
@@ -99,7 +99,7 @@ class PhonebookAccountActionsListingTest {
 
         assertEquals(PhonebookListingResult.NoActiveCharacter, result)
         assertEquals(emptyList(), repository.listingChangeRequests)
-        assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.NO_ACTIVE_CHARACTER)), viewer.messages)
+        assertEquals(listOf(PhonebookMessage("sneakymisc.phonebook.no_active_character")), viewer.messages)
     }
 
     @Test

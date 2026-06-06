@@ -3,6 +3,7 @@ package com.danidipp.sneakymisc.phonebook
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import net.kyori.adventure.text.Component
 
 class PhonebookExchangeActionsTest {
     @Test
@@ -19,7 +20,7 @@ class PhonebookExchangeActionsTest {
         )
         assertEquals(
             listOf(
-                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage(PhonebookMessageKeys.EXCHANGE_SEEKING_STARTED)),
+                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage("sneakymisc.phonebook.exchange.seeking_started")),
                 PhonebookExchangeEffect.ScheduleSeekingTimeout(initiatorAccount, PhonebookExchangeSeekingToken(1), delayTicks = 20 * 30),
             ),
             first.effects,
@@ -31,7 +32,7 @@ class PhonebookExchangeActionsTest {
         assertEquals(
             listOf(
                 PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccount, PhonebookExchangeSeekingToken(1)),
-                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage(PhonebookMessageKeys.EXCHANGE_SEEKING_RESET)),
+                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage("sneakymisc.phonebook.exchange.seeking_reset")),
                 PhonebookExchangeEffect.ScheduleSeekingTimeout(initiatorAccount, PhonebookExchangeSeekingToken(2), delayTicks = 20 * 30),
             ),
             second.effects,
@@ -54,7 +55,7 @@ class PhonebookExchangeActionsTest {
         assertEquals(PhonebookExchangeResult.SeekingTimedOut, currentTimeout.result)
         assertEquals(
             listOf(
-                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage(PhonebookMessageKeys.EXCHANGE_SEEKING_TIMED_OUT))
+                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage("sneakymisc.phonebook.exchange.seeking_timed_out"))
             ),
             currentTimeout.effects,
         )
@@ -96,7 +97,7 @@ class PhonebookExchangeActionsTest {
         assertEquals(
             listOf(
                 PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccount, token),
-                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage(PhonebookMessageKeys.EXCHANGE_INITIATOR_NO_ACTIVE_CHARACTER)),
+                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage("sneakymisc.phonebook.exchange.initiator_no_active_character")),
             ),
             result.effects,
         )
@@ -133,8 +134,8 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_REQUEST_SENT,
-                        mapOf("character" to "Target Character"),
+                        "sneakymisc.phonebook.exchange.request_sent",
+                        mapOf("character" to Component.text("Target Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.OpenExchangeDecision(
@@ -180,8 +181,8 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_REQUEST_SENT,
-                        mapOf("character" to "Target Character"),
+                        "sneakymisc.phonebook.exchange.request_sent",
+                        mapOf("character" to Component.text("Target Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.OpenExchangeDecision(
@@ -212,7 +213,7 @@ class PhonebookExchangeActionsTest {
         assertEquals(
             listOf(
                 PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccount, token),
-                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage(PhonebookMessageKeys.EXCHANGE_TARGET_NO_ACTIVE_CHARACTER)),
+                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage("sneakymisc.phonebook.exchange.target_no_active_character")),
             ),
             result.effects,
         )
@@ -256,8 +257,8 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DUPLICATE_CONTACT,
-                        mapOf("character" to "Target Character"),
+                        "sneakymisc.phonebook.exchange.duplicate_contact",
+                        mapOf("character" to Component.text("Target Character")),
                     ),
                 ),
             ),
@@ -288,7 +289,7 @@ class PhonebookExchangeActionsTest {
         assertEquals(
             listOf(
                 PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccount, token),
-                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage(PhonebookMessageKeys.EXCHANGE_TARGET_BUSY)),
+                PhonebookExchangeEffect.SendMessage(initiatorAccount, PhonebookMessage("sneakymisc.phonebook.exchange.target_busy")),
             ),
             result.effects,
         )
@@ -325,15 +326,15 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_ACCEPTED_INITIATOR,
-                        mapOf("character" to "Target Character"),
+                        "sneakymisc.phonebook.exchange.accepted_initiator",
+                        mapOf("character" to Component.text("Target Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.SendMessage(
                     targetAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_ACCEPTED_TARGET,
-                        mapOf("character" to "Initiator Character"),
+                        "sneakymisc.phonebook.exchange.accepted_target",
+                        mapOf("character" to Component.text("Initiator Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.ScheduleExchangeClose(targetAccount, exchangeId),
@@ -391,8 +392,8 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     targetAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DUPLICATE_CONTACT,
-                        mapOf("character" to "Initiator Character"),
+                        "sneakymisc.phonebook.exchange.duplicate_contact",
+                        mapOf("character" to Component.text("Initiator Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.ScheduleExchangeClose(targetAccount, exchangeId),
@@ -437,15 +438,15 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DECLINED_INITIATOR,
-                        mapOf("character" to "Target Character"),
+                        "sneakymisc.phonebook.exchange.declined_initiator",
+                        mapOf("character" to Component.text("Target Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.SendMessage(
                     targetAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DECLINED_TARGET,
-                        mapOf("character" to "Initiator Character"),
+                        "sneakymisc.phonebook.exchange.declined_target",
+                        mapOf("character" to Component.text("Initiator Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.ScheduleExchangeClose(targetAccount, exchangeId),
@@ -503,15 +504,15 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DECLINED_INITIATOR,
-                        mapOf("character" to "First Target"),
+                        "sneakymisc.phonebook.exchange.declined_initiator",
+                        mapOf("character" to Component.text("First Target")),
                     ),
                 ),
                 PhonebookExchangeEffect.SendMessage(
                     firstTargetAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DECLINED_TARGET,
-                        mapOf("character" to "Initiator Character"),
+                        "sneakymisc.phonebook.exchange.declined_target",
+                        mapOf("character" to Component.text("Initiator Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.ScheduleExchangeClose(firstTargetAccount, firstExchangeId),
@@ -558,15 +559,15 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DECLINED_INITIATOR,
-                        mapOf("character" to "Target Character"),
+                        "sneakymisc.phonebook.exchange.declined_initiator",
+                        mapOf("character" to Component.text("Target Character")),
                     ),
                 ),
                 PhonebookExchangeEffect.SendMessage(
                     targetAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_DECLINED_TARGET,
-                        mapOf("character" to "Initiator Character"),
+                        "sneakymisc.phonebook.exchange.declined_target",
+                        mapOf("character" to Component.text("Initiator Character")),
                     ),
                 ),
             ),
@@ -608,8 +609,8 @@ class PhonebookExchangeActionsTest {
                 PhonebookExchangeEffect.SendMessage(
                     initiatorAccount,
                     PhonebookMessage(
-                        PhonebookMessageKeys.EXCHANGE_TARGET_LEFT,
-                        mapOf("character" to "Target Character"),
+                        "sneakymisc.phonebook.exchange.target_left",
+                        mapOf("character" to Component.text("Target Character")),
                     ),
                 )
             ),

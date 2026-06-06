@@ -76,10 +76,10 @@ class PhonebookAccountActions(
         ) { characterId ->
             val change = phonebooks.changeListing(characterId, mode)
             if (change.listed) {
-                viewer.sendMessage(PhonebookMessageCatalog.listed())
+                viewer.sendMessage(PhonebookMessage("sneakymisc.phonebook.listed"))
                 PhonebookListingResult.Listed
             } else {
-                viewer.sendMessage(PhonebookMessageCatalog.unlisted())
+                viewer.sendMessage(PhonebookMessage("sneakymisc.phonebook.unlisted"))
                 PhonebookListingResult.Unlisted
             }
         }
@@ -94,7 +94,7 @@ class PhonebookAccountActions(
 
         val characterId = activeCharacters.activeCharacter(viewer.accountId)
             ?: return noActiveCharacter.also {
-                viewer.sendMessage(PhonebookMessageCatalog.noActiveCharacter())
+                viewer.sendMessage(PhonebookMessage("sneakymisc.phonebook.no_active_character"))
             }
 
         return action(characterId)

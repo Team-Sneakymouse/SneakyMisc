@@ -1,100 +1,93 @@
 package com.danidipp.sneakymisc.phonebook
 
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.Locale
+import java.util.PropertyResourceBundle
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.TranslatableComponent
+import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import net.kyori.adventure.translation.GlobalTranslator
 
 class PhonebookMessageTest {
     @Test
-    fun `phonebook message catalog owns key named arguments and default translation`() {
-        val entry = PhonebookMessageCatalog.entry(PhonebookMessageKeys.TARGET_OFFLINE)
-
-        assertEquals(PhonebookMessageKeys.TARGET_OFFLINE, entry.key)
-        assertEquals(listOf("character"), entry.argumentNames)
-        assertEquals("<red><gold>{0}</gold> is no longer reachable.", entry.defaultMiniMessage)
-    }
-
-    @Test
-    fun `phonebook message keeps named arguments until the Bukkit adapter converts them`() {
+    fun `Bukkit adapter converts phonebook messages to named component arguments`() {
         val message = PhonebookMessage(
-            PhonebookMessageKeys.TARGET_OFFLINE,
-            mapOf("character" to "Reachable Character"),
+            "sneakymisc.phonebook.target_offline",
+            mapOf("character" to Component.text("Reachable Character")),
         )
 
         val component = message.asComponent() as TranslatableComponent
 
-        assertEquals(PhonebookMessageKeys.TARGET_OFFLINE, component.key())
-        assertEquals(listOf("character"), PhonebookMessageKeys.argumentNames(component.key()))
-        assertEquals(Component.text("Reachable Character"), component.arguments().single().value())
+        assertEquals("sneakymisc.phonebook.target_offline", component.key())
+        assertEquals(1, component.arguments().size)
+        assertTrue(component.arguments().single().value() is Component)
     }
 
     @Test
-    fun `missing named message arguments fail at the adapter seam`() {
-        val message = PhonebookMessage(PhonebookMessageKeys.TARGET_OFFLINE)
+    fun `phonebook messages resource exists and contains translations`() {
+        val keys = phonebookMessageResourceKeys()
 
-        assertFailsWith<IllegalArgumentException> {
-            message.asComponent()
-        }
+        assertTrue(Files.isRegularFile(phonebookMessagesPath()))
+        assertTrue(keys.isNotEmpty(), "Expected at least one phonebook translation")
     }
 
     @Test
-    fun `default phonebook translations resolve through Adventure`() {
-        PhonebookTranslations.registerDefaults()
+    fun `phonebook messages resource has no duplicate keys`() {
+        val duplicateKeys = Files.readAllLines(phonebookMessagesPath(), StandardCharsets.UTF_8)
+            .mapNotNull { line -> line.substringBefore("=", missingDelimiterValue = "").takeIf(String::isNotBlank) }
+            .groupingBy { it }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
 
-        val rendered = GlobalTranslator.render(
-            Component.translatable(PhonebookMessageKeys.NO_ACTIVE_CHARACTER),
-            Locale.US,
-        )
-
-        assertFalse(rendered is TranslatableComponent)
+        assertEquals(emptySet(), duplicateKeys)
     }
 
     @Test
-    fun `default phonebook translations cover every catalog entry`() {
-        PhonebookTranslations.registerDefaults()
+    fun `phonebook messages resource entries resolve through Adventure`() {
+        PhonebookTranslations.registerDefaults(phonebookMessagesPath())
 
-        PhonebookMessageCatalog.entries.forEach { entry ->
-            val arguments = entry.argumentNames.map { name -> Component.text(name) }
-
+        phonebookMessageResourceKeys().forEach { key ->
             assertFalse(
-                GlobalTranslator.render(Component.translatable(entry.key, arguments), Locale.US) is TranslatableComponent,
-                "Default translation did not resolve for ${entry.key}",
+                GlobalTranslator.render(PhonebookMessage(key, mapOf("character" to Component.text("Character"))).asComponent(), Locale.US) is TranslatableComponent,
+                "Default translation did not resolve for $key",
             )
         }
     }
 
     @Test
-    fun `listing feedback keys resolve without named arguments`() {
-        PhonebookTranslations.registerDefaults()
+    fun `named MiniMessage arguments render from the messages resource`() {
+        PhonebookTranslations.registerDefaults(phonebookMessagesPath())
 
-        assertEquals(emptyList(), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.LISTED))
-        assertEquals(emptyList(), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.UNLISTED))
-        assertFalse(GlobalTranslator.render(Component.translatable(PhonebookMessageKeys.LISTED), Locale.US) is TranslatableComponent)
-        assertFalse(GlobalTranslator.render(Component.translatable(PhonebookMessageKeys.UNLISTED), Locale.US) is TranslatableComponent)
+        val rendered = GlobalTranslator.render(
+            PhonebookMessage(
+                "sneakymisc.phonebook.target_offline",
+                mapOf("character" to Component.text("Reachable Character", NamedTextColor.AQUA)),
+            ).asComponent(),
+            Locale.US,
+        )
+
+        assertFalse(rendered is TranslatableComponent)
+        assertEquals("Reachable Character is no longer reachable.", PlainTextComponentSerializer.plainText().serialize(rendered))
+        assertEquals(NamedTextColor.AQUA, rendered.children().first().color())
     }
 
-    @Test
-    fun `contact removal feedback keys resolve with named Character arguments`() {
-        PhonebookTranslations.registerDefaults()
-
-        assertEquals(listOf("character"), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.CONTACT_REMOVED))
-        assertEquals(listOf("character"), PhonebookMessageKeys.argumentNames(PhonebookMessageKeys.CONTACT_ALREADY_REMOVED))
-        assertFalse(
-            GlobalTranslator.render(
-                PhonebookMessage(PhonebookMessageKeys.CONTACT_REMOVED, mapOf("character" to "Removed")).asComponent(),
-                Locale.US,
-            ) is TranslatableComponent
-        )
-        assertFalse(
-            GlobalTranslator.render(
-                PhonebookMessage(PhonebookMessageKeys.CONTACT_ALREADY_REMOVED, mapOf("character" to "Owner")).asComponent(),
-                Locale.US,
-            ) is TranslatableComponent
-        )
+    private fun phonebookMessagesPath(): Path {
+        val resource = requireNotNull(javaClass.classLoader.getResource("messages/phonebook.txt")) {
+            "Missing test resource messages/phonebook.txt"
+        }
+        return Path.of(resource.toURI())
     }
+
+    private fun phonebookMessageResourceKeys(): Set<String> =
+        phonebookMessagesPath().toFile().reader(StandardCharsets.UTF_8).use { reader ->
+            PropertyResourceBundle(reader).keySet()
+        }
 }

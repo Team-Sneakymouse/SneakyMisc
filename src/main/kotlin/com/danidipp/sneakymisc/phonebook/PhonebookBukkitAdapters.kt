@@ -1,12 +1,15 @@
 package com.danidipp.sneakymisc.phonebook
 
 import ca.bungo.sneakycellphones.handler.CallManager
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.Locale
 import java.util.UUID
 import net.kyori.adventure.key.Key
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.minimessage.translation.MiniMessageTranslationStore
+import net.kyori.adventure.text.minimessage.translation.Argument
 import net.kyori.adventure.translation.GlobalTranslator
 import net.sneakycharactermanager.paper.handlers.character.Character
 import org.bukkit.Bukkit
@@ -84,27 +87,21 @@ class BukkitPhonebookViewer(private val player: Player, private val inventoryFac
 }
 
 fun PhonebookMessage.asComponent(): Component =
-    Component.translatable(
-        key,
-        PhonebookMessageCatalog.argumentNames(key).map { name ->
-            Component.text(requireNotNull(arguments[name]) { "Missing Phonebook message argument '$name' for '$key'" })
-        },
-    )
+    Component.translatable(key,arguments.map { (name, value) -> Argument.component(name, value) })
 
 object PhonebookTranslations {
     private var registered = false
 
-    fun registerDefaults() {
+    fun registerDefaults(messagesPath: Path) {
         if (registered) return
+        require(Files.isRegularFile(messagesPath)) { "Missing Phonebook messages file '$messagesPath'" }
 
         val store = MiniMessageTranslationStore.create(
             Key.key("sneakymisc", "phonebook"),
             MiniMessage.miniMessage(),
         )
         store.defaultLocale(Locale.US)
-        PhonebookMessageCatalog.entries.forEach { entry ->
-            store.register(entry.key, Locale.US, entry.defaultMiniMessage)
-        }
+        store.registerAll(Locale.US, messagesPath, false)
         GlobalTranslator.translator().addSource(store)
         registered = true
     }

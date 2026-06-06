@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.phonebook
 
 import java.util.UUID
+import net.kyori.adventure.text.Component
 
 @JvmInline
 value class PhonebookExchangeSeekingToken(val value: Long)
@@ -78,9 +79,9 @@ class PhonebookExchangeActions(
         val effects = buildList {
             if (previousToken != null) {
                 add(PhonebookExchangeEffect.CancelSeekingTimeout(initiatorAccountId, previousToken))
-                add(PhonebookExchangeEffect.SendMessage(initiatorAccountId, PhonebookMessageCatalog.exchangeSeekingReset()))
+                add(PhonebookExchangeEffect.SendMessage(initiatorAccountId, PhonebookMessage("sneakymisc.phonebook.exchange.seeking_reset")))
             } else {
-                add(PhonebookExchangeEffect.SendMessage(initiatorAccountId, PhonebookMessageCatalog.exchangeSeekingStarted()))
+                add(PhonebookExchangeEffect.SendMessage(initiatorAccountId, PhonebookMessage("sneakymisc.phonebook.exchange.seeking_started")))
             }
             add(PhonebookExchangeEffect.ScheduleSeekingTimeout(initiatorAccountId, token, SEEKING_TIMEOUT_TICKS))
         }
@@ -97,7 +98,7 @@ class PhonebookExchangeActions(
         seekingByAccount.remove(initiatorAccountId)
         return PhonebookExchangeOutcome(
             PhonebookExchangeResult.SeekingTimedOut,
-            listOf(PhonebookExchangeEffect.SendMessage(initiatorAccountId, PhonebookMessageCatalog.exchangeSeekingTimedOut())),
+            listOf(PhonebookExchangeEffect.SendMessage(initiatorAccountId, PhonebookMessage("sneakymisc.phonebook.exchange.seeking_timed_out"))),
         )
     }
 
@@ -116,7 +117,7 @@ class PhonebookExchangeActions(
             return cancelSeeking(
                 initiatorAccountId = initiatorAccountId,
                 token = seekingToken,
-                message = PhonebookMessageCatalog.exchangeInitiatorNoActiveCharacter(),
+                message = PhonebookMessage("sneakymisc.phonebook.exchange.initiator_no_active_character"),
             )
         }
 
@@ -124,13 +125,13 @@ class PhonebookExchangeActions(
             ?: return cancelSeeking(
                 initiatorAccountId = initiatorAccountId,
                 token = seekingToken,
-                message = PhonebookMessageCatalog.exchangeTargetNoActiveCharacter(),
+                message = PhonebookMessage("sneakymisc.phonebook.exchange.target_no_active_character"),
             )
         if (targetBusy) {
             return cancelSeeking(
                 initiatorAccountId = initiatorAccountId,
                 token = seekingToken,
-                message = PhonebookMessageCatalog.exchangeTargetBusy(),
+                message = PhonebookMessage("sneakymisc.phonebook.exchange.target_busy"),
             )
         }
         val initiator = directory.character(initiatorAccountId, initiatorCharacterId)
@@ -141,7 +142,10 @@ class PhonebookExchangeActions(
             return cancelSeeking(
                 initiatorAccountId = initiatorAccountId,
                 token = seekingToken,
-                message = PhonebookMessageCatalog.exchangeDuplicateContact(target.displayName),
+                message = PhonebookMessage(
+                    "sneakymisc.phonebook.exchange.duplicate_contact",
+                    mapOf("character" to Component.text(target.displayName)),
+                ),
             )
         }
         val exchangeId = PhonebookExchangeId(nextExchangeId++)
@@ -159,7 +163,10 @@ class PhonebookExchangeActions(
                 add(
                     PhonebookExchangeEffect.SendMessage(
                         initiatorAccountId,
-                        PhonebookMessageCatalog.exchangeRequestSent(target.displayName),
+                        PhonebookMessage(
+                            "sneakymisc.phonebook.exchange.request_sent",
+                            mapOf("character" to Component.text(target.displayName)),
+                        ),
                     )
                 )
                 add(
@@ -184,7 +191,10 @@ class PhonebookExchangeActions(
                 listOf(
                     PhonebookExchangeEffect.SendMessage(
                         pending.target.accountId,
-                        PhonebookMessageCatalog.exchangeDuplicateContact(pending.initiator.displayName),
+                        PhonebookMessage(
+                            "sneakymisc.phonebook.exchange.duplicate_contact",
+                            mapOf("character" to Component.text(pending.initiator.displayName)),
+                        ),
                     ),
                     PhonebookExchangeEffect.ScheduleExchangeClose(pending.target.accountId, exchangeId),
                 ),
@@ -195,11 +205,17 @@ class PhonebookExchangeActions(
             listOf(
                 PhonebookExchangeEffect.SendMessage(
                     pending.initiator.accountId,
-                    PhonebookMessageCatalog.exchangeAcceptedInitiator(pending.target.displayName),
+                    PhonebookMessage(
+                        "sneakymisc.phonebook.exchange.accepted_initiator",
+                        mapOf("character" to Component.text(pending.target.displayName)),
+                    ),
                 ),
                 PhonebookExchangeEffect.SendMessage(
                     pending.target.accountId,
-                    PhonebookMessageCatalog.exchangeAcceptedTarget(pending.initiator.displayName),
+                    PhonebookMessage(
+                        "sneakymisc.phonebook.exchange.accepted_target",
+                        mapOf("character" to Component.text(pending.initiator.displayName)),
+                    ),
                 ),
                 PhonebookExchangeEffect.ScheduleExchangeClose(pending.target.accountId, exchangeId),
             ),
@@ -226,7 +242,10 @@ class PhonebookExchangeActions(
             pendingById.remove(pending.exchangeId)
             effects += PhonebookExchangeEffect.SendMessage(
                 pending.initiator.accountId,
-                PhonebookMessageCatalog.exchangeTargetLeft(pending.target.displayName),
+                PhonebookMessage(
+                    "sneakymisc.phonebook.exchange.target_left",
+                    mapOf("character" to Component.text(pending.target.displayName)),
+                ),
             )
         }
 
@@ -254,13 +273,19 @@ class PhonebookExchangeActions(
             add(
                 PhonebookExchangeEffect.SendMessage(
                     pending.initiator.accountId,
-                    PhonebookMessageCatalog.exchangeDeclinedInitiator(pending.target.displayName),
+                    PhonebookMessage(
+                        "sneakymisc.phonebook.exchange.declined_initiator",
+                        mapOf("character" to Component.text(pending.target.displayName)),
+                    ),
                 )
             )
             add(
                 PhonebookExchangeEffect.SendMessage(
                     pending.target.accountId,
-                    PhonebookMessageCatalog.exchangeDeclinedTarget(pending.initiator.displayName),
+                    PhonebookMessage(
+                        "sneakymisc.phonebook.exchange.declined_target",
+                        mapOf("character" to Component.text(pending.initiator.displayName)),
+                    ),
                 )
             )
             if (scheduleClose) {

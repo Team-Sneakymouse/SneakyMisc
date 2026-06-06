@@ -64,7 +64,7 @@ class PhonebookCommand(
     }
 
     private fun failConsole(context: CommandContext<CommandSourceStack>): Int {
-        context.source.sender.sendMessage(Component.translatable(PhonebookMessageKeys.PLAYER_ONLY))
+        context.source.sender.sendMessage(PhonebookMessage("sneakymisc.phonebook.player_only").asComponent())
         return 0
     }
 

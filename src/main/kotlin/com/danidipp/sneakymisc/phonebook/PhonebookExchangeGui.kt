@@ -33,11 +33,11 @@ class PhonebookExchangeInventoryFactory(plugin: Plugin) {
         val inventory = Bukkit.createInventory(
             holder,
             INVENTORY_SIZE,
-            Component.translatable(PhonebookMessageKeys.EXCHANGE_TITLE),
+            PhonebookMessage("sneakymisc.phonebook.exchange.title").asComponent(),
         )
         holder.attach(inventory)
-        inventory.setItem(ACCEPT_SLOT, decisionItem(Material.LIME_WOOL, PhonebookMessageKeys.EXCHANGE_ACCEPT, PhonebookExchangeDecision.Accept))
-        inventory.setItem(DECLINE_SLOT, decisionItem(Material.RED_WOOL, PhonebookMessageKeys.EXCHANGE_DECLINE, PhonebookExchangeDecision.Decline))
+        inventory.setItem(ACCEPT_SLOT, decisionItem(Material.LIME_WOOL, "sneakymisc.phonebook.exchange.accept", PhonebookExchangeDecision.Accept))
+        inventory.setItem(DECLINE_SLOT, decisionItem(Material.RED_WOOL, "sneakymisc.phonebook.exchange.decline", PhonebookExchangeDecision.Decline))
         return inventory
     }
 
@@ -52,7 +52,7 @@ class PhonebookExchangeInventoryFactory(plugin: Plugin) {
     private fun decisionItem(material: Material, key: String, decision: PhonebookExchangeDecision): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta
-        meta.displayName(Component.translatable(key))
+        meta.itemName(PhonebookMessage(key).asComponent())
         meta.persistentDataContainer.set(decisionKey, PersistentDataType.STRING, decision.name)
         item.itemMeta = meta
         return item

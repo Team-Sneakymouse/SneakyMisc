@@ -117,7 +117,7 @@ class PhonebookInventoryFactory(private val plugin: Plugin, private val headReso
         val inventory = Bukkit.createInventory(
             holder,
             PhonebookBrowserRenderer.INVENTORY_SIZE,
-            Component.translatable(PhonebookMessageKeys.TITLE),
+            PhonebookMessage("sneakymisc.phonebook.title").asComponent(),
         )
         holder.attach(inventory)
         populate(inventory, model, player)
@@ -140,18 +140,18 @@ class PhonebookInventoryFactory(private val plugin: Plugin, private val headReso
         }
         inventory.setItem(
             PhonebookBrowserRenderer.ADD_CONTACT_SLOT,
-            actionItem(model.state, Material.LIME_DYE, PhonebookMessageKeys.EXCHANGE_ADD_CONTACT, PhonebookBrowserAction.AddContact),
+            actionItem(model.state, Material.LIME_DYE, "sneakymisc.phonebook.exchange.add_contact", PhonebookBrowserAction.AddContact),
         )
         if (model.hasPreviousPage) {
             inventory.setItem(
                 PhonebookBrowserRenderer.PREVIOUS_PAGE_SLOT,
-                actionItem(model.state, Material.ARROW, PhonebookMessageKeys.PREVIOUS_PAGE, PhonebookBrowserAction.PreviousPage),
+                actionItem(model.state, Material.ARROW, "sneakymisc.phonebook.previous_page", PhonebookBrowserAction.PreviousPage),
             )
         }
         if (model.hasNextPage) {
             inventory.setItem(
                 PhonebookBrowserRenderer.NEXT_PAGE_SLOT,
-                actionItem(model.state, Material.ARROW, PhonebookMessageKeys.NEXT_PAGE, PhonebookBrowserAction.NextPage),
+                actionItem(model.state, Material.ARROW, "sneakymisc.phonebook.next_page", PhonebookBrowserAction.NextPage),
             )
         }
     }
@@ -194,7 +194,7 @@ class PhonebookInventoryFactory(private val plugin: Plugin, private val headReso
         val item = ItemStack(Material.PLAYER_HEAD)
         val meta = item.itemMeta
         val contact = browserItem.contact
-        meta.displayName(Component.text(contact.displayName))
+        meta.itemName(Component.text(contact.displayName))
         meta.persistentDataContainer.set(contactCharacterKey, PersistentDataType.STRING, contact.characterId.toString())
         meta.persistentDataContainer.set(renderTokenKey, PersistentDataType.LONG, state.renderToken)
         meta.persistentDataContainer.set(pageKey, PersistentDataType.INTEGER, state.page)
@@ -206,7 +206,7 @@ class PhonebookInventoryFactory(private val plugin: Plugin, private val headReso
     private fun actionItem(state: PhonebookBrowserState, material: Material, key: String, action: PhonebookBrowserAction): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta
-        meta.displayName(Component.translatable(key))
+        meta.itemName(PhonebookMessage(key).asComponent())
         meta.persistentDataContainer.set(browserActionKey, PersistentDataType.STRING, action.name)
         meta.persistentDataContainer.set(renderTokenKey, PersistentDataType.LONG, state.renderToken)
         meta.persistentDataContainer.set(pageKey, PersistentDataType.INTEGER, state.page)

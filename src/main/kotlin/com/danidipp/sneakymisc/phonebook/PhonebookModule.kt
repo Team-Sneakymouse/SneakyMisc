@@ -63,6 +63,7 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
     )
 
     init {
-        PhonebookTranslations.registerDefaults()
+        plugin.saveResource("messages/phonebook.txt", false)
+        PhonebookTranslations.registerDefaults(plugin.dataPath.resolve("messages/phonebook.txt"))
     }
 }

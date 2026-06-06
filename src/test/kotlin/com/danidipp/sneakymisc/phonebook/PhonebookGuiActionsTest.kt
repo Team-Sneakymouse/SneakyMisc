@@ -4,6 +4,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.kyori.adventure.text.Component
 
 class PhonebookGuiActionsTest {
     @Test
@@ -147,8 +148,8 @@ class PhonebookGuiActionsTest {
         assertEquals(
             listOf(
                 PhonebookMessage(
-                    PhonebookMessageKeys.TARGET_OFFLINE,
-                    mapOf("character" to "Target Character"),
+                    "sneakymisc.phonebook.target_offline",
+                    mapOf("character" to Component.text("Target Character")),
                 )
             ),
             viewer.messages,
@@ -221,7 +222,7 @@ class PhonebookGuiActionsTest {
 
         assertEquals(PhonebookContactClickResult.StaleOwner, result)
         assertEquals(emptyList(), caller.calls)
-        assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.STALE_OWNER)), viewer.messages)
+        assertEquals(listOf(PhonebookMessage("sneakymisc.phonebook.stale_owner")), viewer.messages)
         assertEquals(emptyList(), viewer.openedModels)
         assertEquals(0, viewer.closeCount)
     }
@@ -267,8 +268,8 @@ class PhonebookGuiActionsTest {
         assertEquals(
             listOf(
                 PhonebookMessage(
-                    PhonebookMessageKeys.CONTACT_REMOVED,
-                    mapOf("character" to "Removed Character"),
+                    "sneakymisc.phonebook.contact_removed",
+                    mapOf("character" to Component.text("Removed Character")),
                 )
             ),
             viewer.messages,
@@ -303,7 +304,7 @@ class PhonebookGuiActionsTest {
             )
 
         assertEquals(PhonebookRemoveContactResult.StaleOwner, result)
-        assertEquals(listOf(PhonebookMessage(PhonebookMessageKeys.STALE_OWNER)), viewer.messages)
+        assertEquals(listOf(PhonebookMessage("sneakymisc.phonebook.stale_owner")), viewer.messages)
         assertEquals(emptyList(), phonebooks.savedData)
         assertEquals(emptyList(), viewer.openedModels)
     }
@@ -331,8 +332,8 @@ class PhonebookGuiActionsTest {
         assertEquals(
             listOf(
                 PhonebookMessage(
-                    PhonebookMessageKeys.CONTACT_ALREADY_REMOVED,
-                    mapOf("character" to "Owner Character"),
+                    "sneakymisc.phonebook.contact_already_removed",
+                    mapOf("character" to Component.text("Owner Character")),
                 )
             ),
             viewer.messages,

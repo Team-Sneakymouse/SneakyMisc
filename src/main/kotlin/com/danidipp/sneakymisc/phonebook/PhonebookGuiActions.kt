@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.phonebook
 
 import java.util.UUID
+import net.kyori.adventure.text.Component
 
 enum class PhonebookRemoveContactResult {
     Removed,
@@ -63,7 +64,7 @@ class PhonebookGuiActions(
         val selectedContactCharacterId = selection.contactCharacterId
         val data = phonebooks.load()
         if (activeCharacters.activeCharacter(state.viewerAccountId) != state.ownerCharacterId) {
-            viewer.sendMessage(PhonebookMessageCatalog.staleOwner())
+            viewer.sendMessage(PhonebookMessage("sneakymisc.phonebook.stale_owner"))
             return PhonebookContactClickResult.StaleOwner
         }
 
@@ -114,7 +115,7 @@ class PhonebookGuiActions(
         val state = selection.holderState
         val selectedContactCharacterId = selection.contactCharacterId
         if (activeCharacters.activeCharacter(state.viewerAccountId) != state.ownerCharacterId) {
-            viewer.sendMessage(PhonebookMessageCatalog.staleOwner())
+            viewer.sendMessage(PhonebookMessage("sneakymisc.phonebook.stale_owner"))
             return PhonebookRemoveContactResult.StaleOwner
         }
 
@@ -122,14 +123,20 @@ class PhonebookGuiActions(
         val removedContact = removal.removedContact
         if (removedContact == null) {
             viewer.sendMessage(
-                PhonebookMessageCatalog.contactAlreadyRemoved(ownerCharacterName(state)),
+                PhonebookMessage(
+                    "sneakymisc.phonebook.contact_already_removed",
+                    mapOf("character" to Component.text(ownerCharacterName(state))),
+                ),
             )
             viewer.refreshInventory(browser.refresh(removal.data, state))
             return PhonebookRemoveContactResult.AlreadyRemoved
         }
 
         viewer.sendMessage(
-            PhonebookMessageCatalog.contactRemoved(removedContactName(removedContact, selectedContactCharacterId)),
+            PhonebookMessage(
+                "sneakymisc.phonebook.contact_removed",
+                mapOf("character" to Component.text(removedContactName(removedContact, selectedContactCharacterId))),
+            ),
         )
         viewer.refreshInventory(browser.refresh(removal.data, state))
         return PhonebookRemoveContactResult.Removed
@@ -144,7 +151,7 @@ class PhonebookGuiActions(
 
         val state = selection.holderState
         if (activeCharacters.activeCharacter(state.viewerAccountId) != state.ownerCharacterId) {
-            viewer.sendMessage(PhonebookMessageCatalog.staleOwner())
+            viewer.sendMessage(PhonebookMessage("sneakymisc.phonebook.stale_owner"))
             return PhonebookPageActionResult.StaleOwner
         }
 
@@ -169,7 +176,10 @@ class PhonebookGuiActions(
 
     private fun sendTargetOffline(viewer: PhonebookViewer, resolution: UnresolvedPhonebookContact) {
         viewer.sendMessage(
-            PhonebookMessageCatalog.targetOffline(contactName(resolution)),
+            PhonebookMessage(
+                "sneakymisc.phonebook.target_offline",
+                mapOf("character" to Component.text(contactName(resolution))),
+            ),
         )
     }
 
