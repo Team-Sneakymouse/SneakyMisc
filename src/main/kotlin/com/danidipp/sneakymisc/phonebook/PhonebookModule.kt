@@ -42,9 +42,19 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
         activeCharacters = directory,
         browser = browser,
     )
+    private val debugInspector = PhonebookDebugInspector(
+        phonebooks = storage,
+        activeCharacters = directory,
+        directory = directory,
+    )
+    private val debugCommand = PhonebookDebugCommandAdapter(
+        inspector = debugInspector,
+        renderer = PhonebookDebugRenderer(),
+        targets = BukkitPhonebookDebugTargetResolver(),
+    )
 
     override val commands = listOf(
-        SneakyMiscCommand(PhonebookCommand(accountActions, inventoryFactory).build(), "Open the active Character's Phonebook")
+        SneakyMiscCommand(PhonebookCommand(accountActions, inventoryFactory, debugCommand).build(), "Open the active Character's Phonebook")
     )
 
     override val listeners = listOf(

@@ -23,7 +23,42 @@ data class VisiblePhonebookContact(
     val skin: PhonebookCharacterSkin? = null,
 )
 
+enum class PhonebookContactResolutionFailure {
+    MissingContact,
+    Unlisted,
+    Offline,
+    MissingCharacter,
+}
+
+sealed interface PhonebookContactResolution {
+    val characterId: UUID
+    val accountId: UUID?
+    val character: PhonebookCharacter?
+    val listed: Boolean
+    val online: Boolean
+}
+
+data class ResolvedPhonebookContact(
+    val contact: VisiblePhonebookContact,
+    override val character: PhonebookCharacter,
+) : PhonebookContactResolution {
+    override val characterId: UUID = contact.characterId
+    override val accountId: UUID = contact.accountId
+    override val listed: Boolean = true
+    override val online: Boolean = true
+}
+
+data class UnresolvedPhonebookContact(
+    override val characterId: UUID,
+    override val accountId: UUID?,
+    override val character: PhonebookCharacter?,
+    override val listed: Boolean,
+    override val online: Boolean,
+    val reason: PhonebookContactResolutionFailure,
+) : PhonebookContactResolution
+
 interface PhonebookDirectory {
+    fun characters(accountId: UUID): List<PhonebookCharacter> = emptyList()
     fun character(accountId: UUID, characterId: UUID): PhonebookCharacter?
     fun isOnline(accountId: UUID): Boolean
 }
@@ -33,16 +68,79 @@ interface PhonebookActiveCharacters {
 }
 
 class PhonebookResolver(private val directory: PhonebookDirectory) {
-    fun visibleContacts(data: PhonebookData, ownerCharacterId: UUID): List<VisiblePhonebookContact> =
+    fun resolveContact(data: PhonebookData, ownerCharacterId: UUID, contactCharacterId: UUID): PhonebookContactResolution {
+        val contact = data.contactBetween(ownerCharacterId, contactCharacterId)
+            ?: return UnresolvedPhonebookContact(
+                characterId = contactCharacterId,
+                accountId = null,
+                character = null,
+                listed = false,
+                online = false,
+                reason = PhonebookContactResolutionFailure.MissingContact,
+            )
+        return resolveStoredContact(data, ownerCharacterId, contact)
+            ?: UnresolvedPhonebookContact(
+                characterId = contactCharacterId,
+                accountId = null,
+                character = null,
+                listed = false,
+                online = false,
+                reason = PhonebookContactResolutionFailure.MissingContact,
+            )
+    }
+
+    fun resolveStoredContact(data: PhonebookData, ownerCharacterId: UUID, contact: PhonebookContact): PhonebookContactResolution? {
+        val contactCharacterId = contact.otherCharacter(ownerCharacterId) ?: return null
+        val accountId = contact.accountFor(contactCharacterId)
+            ?: return UnresolvedPhonebookContact(
+                characterId = contactCharacterId,
+                accountId = null,
+                character = null,
+                listed = contactCharacterId in data.listings,
+                online = false,
+                reason = PhonebookContactResolutionFailure.MissingContact,
+            )
+        val listed = contactCharacterId in data.listings
+        val online = directory.isOnline(accountId)
+        val character = directory.character(accountId, contactCharacterId)
+
+        val failure = when {
+            !listed -> PhonebookContactResolutionFailure.Unlisted
+            !online -> PhonebookContactResolutionFailure.Offline
+            character == null -> PhonebookContactResolutionFailure.MissingCharacter
+            else -> null
+        }
+        if (failure != null) {
+            return UnresolvedPhonebookContact(
+                characterId = contactCharacterId,
+                accountId = accountId,
+                character = character,
+                listed = listed,
+                online = online,
+                reason = failure,
+            )
+        }
+
+        val resolvedCharacter = requireNotNull(character)
+        return ResolvedPhonebookContact(
+            VisiblePhonebookContact(
+                accountId = resolvedCharacter.accountId,
+                characterId = resolvedCharacter.characterId,
+                displayName = resolvedCharacter.displayName,
+                skin = resolvedCharacter.skin,
+            ),
+            character = resolvedCharacter,
+        )
+    }
+
+    fun resolveContacts(data: PhonebookData, ownerCharacterId: UUID): List<PhonebookContactResolution> =
         data.contacts.values.mapNotNull { contact ->
-            val contactCharacterId = contact.otherCharacter(ownerCharacterId) ?: return@mapNotNull null
-            if (contactCharacterId !in data.listings) return@mapNotNull null
+            resolveStoredContact(data, ownerCharacterId, contact)
+        }.sortedBy { it.characterId.toString() }
 
-            val accountId = contact.accountFor(contactCharacterId) ?: return@mapNotNull null
-            if (!directory.isOnline(accountId)) return@mapNotNull null
-
-            val character = directory.character(accountId, contactCharacterId) ?: return@mapNotNull null
-            VisiblePhonebookContact(character.accountId, character.characterId, character.displayName, character.skin)
+    fun visibleContacts(data: PhonebookData, ownerCharacterId: UUID): List<VisiblePhonebookContact> =
+        resolveContacts(data, ownerCharacterId).mapNotNull { resolution ->
+            (resolution as? ResolvedPhonebookContact)?.contact
         }.sortedWith(
             compareBy<VisiblePhonebookContact> { it.displayName.lowercase() }
                 .thenBy { it.characterId.toString() }

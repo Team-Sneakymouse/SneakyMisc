@@ -54,6 +54,7 @@ class PhonebookGuiActionsTest {
         val targetAccount = UUID.fromString("00000000-0000-0000-0000-000000000002")
         val targetCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
         val data = PhonebookData(
+            listings = setOf(targetCharacter),
             contacts = mapOf(
                 PhonebookContactKeys.forCharacters(ownerCharacter, targetCharacter) to
                     PhonebookContact.between(ownerCharacter, viewerAccount, targetCharacter, targetAccount)

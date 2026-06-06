@@ -19,24 +19,32 @@ class BukkitPhonebookDirectory : PhonebookDirectory, PhonebookActiveCharacters {
     }
 
     override fun character(accountId: UUID, characterId: UUID): PhonebookCharacter? =
-        Character.getPlayerCharacters(accountId)
-            .firstOrNull { it.characterUUID.equals(characterId.toString(), ignoreCase = true) }
-            ?.let {
-                PhonebookCharacter(
-                    accountId = accountId,
-                    characterId = characterId,
-                    displayName = it.displayName,
-                    skin = PhonebookCharacterSkin(
-                        skin = it.skin,
-                        texture = it.texture,
-                        signature = it.signature,
-                        slim = it.isSlim,
-                    ),
-                )
-            }
+        characters(accountId).firstOrNull { it.characterId == characterId }
+
+    override fun characters(accountId: UUID): List<PhonebookCharacter> =
+        Character.getPlayerCharacters(accountId).mapNotNull {
+            val characterId = runCatching { UUID.fromString(it.characterUUID) }.getOrNull()
+                ?: return@mapNotNull null
+            PhonebookCharacter(
+                accountId = accountId,
+                characterId = characterId,
+                displayName = it.displayName,
+                skin = PhonebookCharacterSkin(
+                    skin = it.skin,
+                    texture = it.texture,
+                    signature = it.signature,
+                    slim = it.isSlim,
+                ),
+            )
+        }
 
     override fun isOnline(accountId: UUID): Boolean =
         Bukkit.getPlayer(accountId)?.isOnline == true
+}
+
+class BukkitPhonebookDebugTargetResolver : PhonebookDebugTargetResolver {
+    override fun onlineAccount(name: String): UUID? =
+        Bukkit.getPlayerExact(name)?.uniqueId
 }
 
 class SneakyCellPhonesCaller : PhonebookCaller {

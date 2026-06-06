@@ -44,7 +44,8 @@ data class PhonebookData(val listings: Set<UUID> = emptySet(), val contacts: Map
 class PhonebookStorage(private val configPath: Path, private val logger: Logger) :
     PhonebookContactStore,
     PhonebookExchangeStore,
-    PhonebookListingStore {
+    PhonebookListingStore,
+    PhonebookDiagnosticStore {
     fun addContact(firstCharacterId: UUID, firstAccountId: UUID, secondCharacterId: UUID, secondAccountId: UUID): Boolean {
         val data = load()
         val key = PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)
@@ -100,13 +101,27 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         return PhonebookExchangePersistenceResult.Created(updatedData)
     }
 
-    override fun load(): PhonebookData {
-        if (!configPath.toFile().exists()) return PhonebookData()
+    override fun load(): PhonebookData = parsePhonebook(logWarnings = true).data
+
+    override fun diagnostics(): PhonebookPersistenceDiagnostics = parsePhonebook(logWarnings = false)
+
+    private fun parsePhonebook(logWarnings: Boolean): PhonebookPersistenceDiagnostics {
+        if (!configPath.toFile().exists()) return PhonebookPersistenceDiagnostics(PhonebookData())
 
         val yaml = YamlConfiguration.loadConfiguration(configPath.toFile())
         val listings = linkedSetOf<UUID>()
+        val malformedListings = mutableListOf<PhonebookMalformedEntry>()
+        val malformedContacts = mutableListOf<PhonebookMalformedEntry>()
+
+        fun issue(path: String, message: String, target: MutableList<PhonebookMalformedEntry>) {
+            if (logWarnings) logger.warning(message)
+            target += PhonebookMalformedEntry(path, message)
+        }
+
         for ((index, value) in yaml.getStringList("listings").withIndex()) {
-            parseUuid(value, "Phonebook listing at index $index is malformed")?.let(listings::add)
+            parseUuid(value) {
+                issue("listings[$index]", "Phonebook listing at index $index is malformed", malformedListings)
+            }?.let(listings::add)
         }
 
         val contacts = linkedMapOf<String, PhonebookContact>()
@@ -114,12 +129,18 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
 
         if (contactsSection != null) {
             for (key in contactsSection.getKeys(false).sorted()) {
-                val contact = parseContact(yaml, key) ?: continue
+                val contact = parseContact(yaml, key) { message ->
+                    issue("contacts.$key", message, malformedContacts)
+                } ?: continue
                 contacts[key] = contact
             }
         }
 
-        return PhonebookData(listings = listings, contacts = contacts)
+        return PhonebookPersistenceDiagnostics(
+            data = PhonebookData(listings = listings, contacts = contacts),
+            malformedListings = malformedListings,
+            malformedContacts = malformedContacts,
+        )
     }
 
     fun save(data: PhonebookData) {
@@ -148,38 +169,46 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         yaml.save(configPath.toFile())
     }
 
-    private fun parseContact(yaml: YamlConfiguration, key: String): PhonebookContact? {
+    private fun parseContact(yaml: YamlConfiguration, key: String, issue: (String) -> Unit): PhonebookContact? {
         val parts = key.split("_")
         if (parts.size != 2) {
-            logger.warning("Phonebook contact '$key' is malformed: expected '<lower-character-uuid>_<higher-character-uuid>'")
+            issue("Phonebook contact '$key' is malformed: expected '<lower-character-uuid>_<higher-character-uuid>'")
             return null
         }
 
-        val lowerCharacterId = parseUuid(parts[0], "Phonebook contact '$key' has malformed lower Character UUID")
+        val lowerCharacterId = parseUuid(parts[0]) {
+            issue("Phonebook contact '$key' has malformed lower Character UUID")
+        }
             ?: return null
-        val higherCharacterId = parseUuid(parts[1], "Phonebook contact '$key' has malformed higher Character UUID")
+        val higherCharacterId = parseUuid(parts[1]) {
+            issue("Phonebook contact '$key' has malformed higher Character UUID")
+        }
             ?: return null
         val expectedKey = PhonebookContactKeys.forCharacters(lowerCharacterId, higherCharacterId)
         if (key != expectedKey) {
-            logger.warning("Phonebook contact '$key' is not canonical; expected '$expectedKey'")
+            issue("Phonebook contact '$key' is not canonical; expected '$expectedKey'")
             return null
         }
 
-        val lowerAccountId = parseUuid(yaml.getString("contacts.$key.accountA"), "Phonebook contact '$key' has malformed accountA")
+        val lowerAccountId = parseUuid(yaml.getString("contacts.$key.accountA")) {
+            issue("Phonebook contact '$key' has malformed accountA")
+        }
             ?: return null
-        val higherAccountId = parseUuid(yaml.getString("contacts.$key.accountB"), "Phonebook contact '$key' has malformed accountB")
+        val higherAccountId = parseUuid(yaml.getString("contacts.$key.accountB")) {
+            issue("Phonebook contact '$key' has malformed accountB")
+        }
             ?: return null
 
         return PhonebookContact(lowerCharacterId, lowerAccountId, higherCharacterId, higherAccountId)
     }
 
-    private fun parseUuid(value: String?, warning: String): UUID? {
+    private fun parseUuid(value: String?, issue: () -> Unit): UUID? {
         if (value == null) {
-            logger.warning(warning)
+            issue()
             return null
         }
         return runCatching { UUID.fromString(value.lowercase()) }
-            .onFailure { logger.warning(warning) }
+            .onFailure { issue() }
             .getOrNull()
     }
 }

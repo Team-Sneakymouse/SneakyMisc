@@ -23,6 +23,8 @@ class PhonebookGuiActions(
     private val caller: PhonebookCaller,
     private val browser: PhonebookBrowser,
 ) {
+    private val resolver = PhonebookResolver(directory)
+
     fun previousPage(viewer: PhonebookViewer, state: PhonebookBrowserState): PhonebookPageActionResult =
         previousPage(viewer, currentActionSelection(state, PhonebookBrowserAction.PreviousPage))
 
@@ -65,28 +67,26 @@ class PhonebookGuiActions(
             return PhonebookContactClickResult.StaleOwner
         }
 
-        val contact = data.contactBetween(state.ownerCharacterId, selectedContactCharacterId)
-        val targetAccountId = contact?.accountFor(selectedContactCharacterId)
-        if (targetAccountId == null) {
-            viewer.refreshInventory(browser.refresh(data, state))
-            return PhonebookContactClickResult.MissingContact
+        when (val resolution = resolver.resolveContact(data, state.ownerCharacterId, selectedContactCharacterId)) {
+            is ResolvedPhonebookContact -> {
+                caller.startOrReuseCall(
+                    state.viewerAccountId,
+                    resolution.contact.accountId,
+                    resolution.contact.displayName,
+                )
+                viewer.closeInventory()
+                return PhonebookContactClickResult.Called
+            }
+            is UnresolvedPhonebookContact -> {
+                if (resolution.reason == PhonebookContactResolutionFailure.Offline) {
+                    sendTargetOffline(viewer, resolution)
+                    viewer.refreshInventory(browser.refresh(data, state))
+                    return PhonebookContactClickResult.TargetOffline
+                }
+                viewer.refreshInventory(browser.refresh(data, state))
+                return PhonebookContactClickResult.MissingContact
+            }
         }
-
-        if (!directory.isOnline(targetAccountId)) {
-            sendTargetOffline(viewer, data, state, selectedContactCharacterId)
-            viewer.refreshInventory(browser.refresh(data, state))
-            return PhonebookContactClickResult.TargetOffline
-        }
-
-        val targetCharacter = directory.character(targetAccountId, selectedContactCharacterId)
-        if (targetCharacter == null) {
-            viewer.refreshInventory(browser.refresh(data, state))
-            return PhonebookContactClickResult.MissingContact
-        }
-
-        caller.startOrReuseCall(state.viewerAccountId, targetAccountId, targetCharacter.displayName)
-        viewer.closeInventory()
-        return PhonebookContactClickResult.Called
     }
 
     fun removeContact(
@@ -167,23 +167,14 @@ class PhonebookGuiActions(
             action = action,
         )
 
-    private fun sendTargetOffline(
-        viewer: PhonebookViewer,
-        data: PhonebookData,
-        state: PhonebookBrowserState,
-        selectedContactCharacterId: UUID,
-    ) {
+    private fun sendTargetOffline(viewer: PhonebookViewer, resolution: UnresolvedPhonebookContact) {
         viewer.sendMessage(
-            PhonebookMessageCatalog.targetOffline(contactName(data, state, selectedContactCharacterId)),
+            PhonebookMessageCatalog.targetOffline(contactName(resolution)),
         )
     }
 
-    private fun contactName(data: PhonebookData, state: PhonebookBrowserState, selectedContactCharacterId: UUID): String {
-        val contact = data.contactBetween(state.ownerCharacterId, selectedContactCharacterId)
-        val accountId = contact?.accountFor(selectedContactCharacterId)
-        return accountId?.let { directory.character(it, selectedContactCharacterId)?.displayName }
-            ?: selectedContactCharacterId.toString()
-    }
+    private fun contactName(resolution: PhonebookContactResolution): String =
+        resolution.character?.displayName ?: resolution.characterId.toString()
 
     private fun removedContactName(contact: PhonebookContact, selectedContactCharacterId: UUID): String {
         val accountId = contact.accountFor(selectedContactCharacterId) ?: return selectedContactCharacterId.toString()

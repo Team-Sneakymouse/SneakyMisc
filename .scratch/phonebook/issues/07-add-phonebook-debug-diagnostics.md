@@ -1,6 +1,6 @@
 # Add Phonebook Debug Diagnostics
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -30,3 +30,7 @@ Add admin-only diagnostics for Phonebook state. `/phonebook debug` inspects the 
 - `.scratch/phonebook/issues/01-call-a-persisted-phonebook-contact.md`
 - `.scratch/phonebook/issues/02-toggle-phonebook-listing.md`
 - `.scratch/phonebook/issues/04-create-a-contact-through-exchange.md`
+
+## Comments
+
+- 2026-06-06: Implemented Phonebook debug diagnostics with a pure `PhonebookDebugInspector` model and a thin Bukkit command adapter. The inspector reports all Characters for an Account, active Character, listing state, stored/visible contact counts, missing Character contacts, bounded examples, and storage-owned malformed persisted contact diagnostics. `/phonebook debug` and `/phonebook debug <player>` route through `sneakymisc.phonebook.debug`, support console with a target, resolve targets online-only, and render clickable copy-to-clipboard UUID components. Scoped Phonebook tests pass with `.\gradlew.bat test --tests "com.danidipp.sneakymisc.phonebook.*"`.

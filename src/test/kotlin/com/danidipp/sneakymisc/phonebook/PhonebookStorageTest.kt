@@ -122,6 +122,41 @@ class PhonebookStorageTest {
     }
 
     @Test
+    fun `storage diagnostics expose malformed persisted contacts without mutating the file`() {
+        val validLowerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
+        val validHigherCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
+        val validLowerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val validHigherAccount = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val configPath = createTempFile(prefix = "phonebook-diagnostics", suffix = ".yml")
+        configPath.writeText(
+            """
+            contacts:
+              malformed-key:
+                accountA: $validLowerAccount
+                accountB: $validHigherAccount
+              ${validLowerCharacter}_${validHigherCharacter}:
+                accountA: $validLowerAccount
+                accountB: $validHigherAccount
+            """.trimIndent()
+        )
+        val original = configPath.readText()
+
+        val diagnostics = PhonebookStorage(configPath, logger = noOpLogger()).diagnostics()
+
+        assertEquals(1, diagnostics.data.contacts.size)
+        assertEquals(
+            listOf(
+                PhonebookMalformedEntry(
+                    path = "contacts.malformed-key",
+                    message = "Phonebook contact 'malformed-key' is malformed: expected '<lower-character-uuid>_<higher-character-uuid>'",
+                )
+            ),
+            diagnostics.malformedContacts,
+        )
+        assertEquals(original, configPath.readText())
+    }
+
+    @Test
     fun `adding an existing contact does not duplicate persisted relationships`() {
         val firstCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
         val firstAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")

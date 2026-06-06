@@ -6,6 +6,21 @@ interface PhonebookDataStore {
     fun load(): PhonebookData
 }
 
+data class PhonebookMalformedEntry(
+    val path: String,
+    val message: String,
+)
+
+data class PhonebookPersistenceDiagnostics(
+    val data: PhonebookData,
+    val malformedListings: List<PhonebookMalformedEntry> = emptyList(),
+    val malformedContacts: List<PhonebookMalformedEntry> = emptyList(),
+)
+
+interface PhonebookDiagnosticStore : PhonebookDataStore {
+    fun diagnostics(): PhonebookPersistenceDiagnostics
+}
+
 data class PhonebookContactRemoval(
     val data: PhonebookData,
     val removedContact: PhonebookContact?,
