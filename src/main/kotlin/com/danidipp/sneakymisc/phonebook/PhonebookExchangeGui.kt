@@ -1,6 +1,5 @@
 package com.danidipp.sneakymisc.phonebook
 
-import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.NamespacedKey

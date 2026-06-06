@@ -87,7 +87,10 @@ class BukkitPhonebookViewer(private val player: Player, private val inventoryFac
 }
 
 fun PhonebookMessage.asComponent(): Component =
-    Component.translatable(key,arguments.map { (name, value) -> Argument.component(name, value) })
+    GlobalTranslator.render(
+        Component.translatable(key, arguments.map { (name, value) -> Argument.component(name, value) }),
+        Locale.US,
+    )
 
 object PhonebookTranslations {
     private var registered = false
