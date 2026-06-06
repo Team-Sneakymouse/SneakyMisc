@@ -2,9 +2,20 @@ package com.danidipp.sneakymisc.phonebook
 
 import java.util.UUID
 
+data class PhonebookBrowserContactItem(
+    val slot: Int,
+    val contact: VisiblePhonebookContact,
+)
+
 data class PhonebookBrowserModel(
     val state: PhonebookBrowserState,
     val visibleContacts: List<VisiblePhonebookContact>,
+    val hasPreviousPage: Boolean = false,
+    val hasNextPage: Boolean = false,
+    val contactItems: List<PhonebookBrowserContactItem> =
+        visibleContacts.mapIndexed { index, contact ->
+            PhonebookBrowserContactItem(PhonebookBrowserRenderer.CONTACT_SLOTS[index], contact)
+        },
 )
 
 interface PhonebookViewer {
@@ -12,6 +23,7 @@ interface PhonebookViewer {
     val permitted: Boolean
     fun sendMessage(message: PhonebookMessage)
     fun openInventory(model: PhonebookBrowserModel)
+    fun refreshInventory(model: PhonebookBrowserModel) = openInventory(model)
     fun closeInventory() = Unit
 }
 
@@ -22,8 +34,20 @@ enum class PhonebookOpenResult {
 }
 
 class PhonebookBrowserRenderer {
-    fun render(state: PhonebookBrowserState, contacts: List<VisiblePhonebookContact>): PhonebookBrowserModel =
-        PhonebookBrowserModel(state, contacts.take(CONTACTS_PER_PAGE))
+    fun render(state: PhonebookBrowserState, contacts: List<VisiblePhonebookContact>): PhonebookBrowserModel {
+        val lastPage = ((contacts.size - 1).coerceAtLeast(0)) / CONTACTS_PER_PAGE
+        val page = state.page.coerceIn(0, lastPage)
+        val pageContacts = contacts
+            .drop(page * CONTACTS_PER_PAGE)
+            .take(CONTACTS_PER_PAGE)
+
+        return PhonebookBrowserModel(
+            state = state.copy(page = page),
+            visibleContacts = pageContacts,
+            hasPreviousPage = page > 0,
+            hasNextPage = page < lastPage,
+        )
+    }
 
     companion object {
         const val INVENTORY_SIZE = 54
@@ -47,6 +71,9 @@ class PhonebookBrowser(
 
     fun refresh(data: PhonebookData, state: PhonebookBrowserState): PhonebookBrowserModel =
         render(data, state.copy(renderToken = renderTokenProvider()))
+
+    fun page(data: PhonebookData, state: PhonebookBrowserState, page: Int): PhonebookBrowserModel =
+        render(data, state.copy(page = page, renderToken = renderTokenProvider()))
 
     private fun render(data: PhonebookData, state: PhonebookBrowserState): PhonebookBrowserModel {
         val visibleContacts = resolver.visibleContacts(data, state.ownerCharacterId)

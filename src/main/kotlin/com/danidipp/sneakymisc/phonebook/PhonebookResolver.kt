@@ -6,12 +6,21 @@ data class PhonebookCharacter(
     val accountId: UUID,
     val characterId: UUID,
     val displayName: String,
+    val skin: PhonebookCharacterSkin? = null,
+)
+
+data class PhonebookCharacterSkin(
+    val skin: String? = null,
+    val texture: String? = null,
+    val signature: String? = null,
+    val slim: Boolean = false,
 )
 
 data class VisiblePhonebookContact(
     val accountId: UUID,
     val characterId: UUID,
     val displayName: String,
+    val skin: PhonebookCharacterSkin? = null,
 )
 
 interface PhonebookDirectory {
@@ -33,7 +42,7 @@ class PhonebookResolver(private val directory: PhonebookDirectory) {
             if (!directory.isOnline(accountId)) return@mapNotNull null
 
             val character = directory.character(accountId, contactCharacterId) ?: return@mapNotNull null
-            VisiblePhonebookContact(character.accountId, character.characterId, character.displayName)
+            VisiblePhonebookContact(character.accountId, character.characterId, character.displayName, character.skin)
         }.sortedWith(
             compareBy<VisiblePhonebookContact> { it.displayName.lowercase() }
                 .thenBy { it.characterId.toString() }

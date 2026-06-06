@@ -21,7 +21,19 @@ class BukkitPhonebookDirectory : PhonebookDirectory, PhonebookActiveCharacters {
     override fun character(accountId: UUID, characterId: UUID): PhonebookCharacter? =
         Character.getPlayerCharacters(accountId)
             .firstOrNull { it.characterUUID.equals(characterId.toString(), ignoreCase = true) }
-            ?.let { PhonebookCharacter(accountId, characterId, it.displayName) }
+            ?.let {
+                PhonebookCharacter(
+                    accountId = accountId,
+                    characterId = characterId,
+                    displayName = it.displayName,
+                    skin = PhonebookCharacterSkin(
+                        skin = it.skin,
+                        texture = it.texture,
+                        signature = it.signature,
+                        slim = it.isSlim,
+                    ),
+                )
+            }
 
     override fun isOnline(accountId: UUID): Boolean =
         Bukkit.getPlayer(accountId)?.isOnline == true
@@ -46,7 +58,16 @@ class BukkitPhonebookViewer(private val player: Player, private val inventoryFac
     }
 
     override fun openInventory(model: PhonebookBrowserModel) {
-        player.openInventory(inventoryFactory.create(model))
+        player.openInventory(inventoryFactory.create(model, player))
+    }
+
+    override fun refreshInventory(model: PhonebookBrowserModel) {
+        val topInventory = player.openInventory.topInventory
+        if (topInventory.holder is PhonebookBrowsingHolder) {
+            inventoryFactory.populate(topInventory, model, player)
+        } else {
+            openInventory(model)
+        }
     }
 
     override fun closeInventory() {

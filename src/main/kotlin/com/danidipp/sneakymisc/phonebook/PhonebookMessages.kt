@@ -116,6 +116,14 @@ object PhonebookMessageCatalog {
         key = "sneakymisc.phonebook.exchange.add_contact",
         defaultMiniMessage = "<green>Add Contact",
     )
+    val previousPage = message(
+        key = "sneakymisc.phonebook.previous_page",
+        defaultMiniMessage = "<yellow>Previous Page",
+    )
+    val nextPage = message(
+        key = "sneakymisc.phonebook.next_page",
+        defaultMiniMessage = "<yellow>Next Page",
+    )
     val exchangeTitle = message(
         key = "sneakymisc.phonebook.exchange.title",
         defaultMiniMessage = "<gold>Phonebook Exchange",
@@ -156,6 +164,8 @@ object PhonebookMessageCatalog {
         exchangeDeclinedTarget,
         exchangeTargetLeft,
         exchangeAddContact,
+        previousPage,
+        nextPage,
         exchangeTitle,
         exchangeAccept,
         exchangeDecline,
@@ -223,6 +233,8 @@ object PhonebookMessageKeys {
     val EXCHANGE_DECLINED_TARGET: String = PhonebookMessageCatalog.exchangeDeclinedTarget.key
     val EXCHANGE_TARGET_LEFT: String = PhonebookMessageCatalog.exchangeTargetLeft.key
     val EXCHANGE_ADD_CONTACT: String = PhonebookMessageCatalog.exchangeAddContact.key
+    val PREVIOUS_PAGE: String = PhonebookMessageCatalog.previousPage.key
+    val NEXT_PAGE: String = PhonebookMessageCatalog.nextPage.key
     val EXCHANGE_TITLE: String = PhonebookMessageCatalog.exchangeTitle.key
     val EXCHANGE_ACCEPT: String = PhonebookMessageCatalog.exchangeAccept.key
     val EXCHANGE_DECLINE: String = PhonebookMessageCatalog.exchangeDecline.key

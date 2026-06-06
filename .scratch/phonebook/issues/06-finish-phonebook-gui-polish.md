@@ -1,6 +1,6 @@
 # Finish Phonebook GUI Polish
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Parent
 
@@ -33,3 +33,7 @@ Finish the Phonebook browsing GUI beyond the MVP. Add full pagination, reserved 
 
 - `.scratch/phonebook/issues/01-call-a-persisted-phonebook-contact.md`
 - `.scratch/phonebook/issues/03-remove-a-phonebook-contact.md`
+
+## Comments
+
+- 2026-06-06: Implemented Phonebook browsing GUI polish with TDD coverage for 54-slot pagination, stable contact slots, previous/next page state, in-place refresh effects, browsing-holder-only Character-switch close behavior, stale contact render-token rejection, and late skin update token/page/slot/contact validation. Browser policy remains in `PhonebookBrowser`, click/navigation/remove policy remains in `PhonebookGuiActions`, persistence stays in storage, and Bukkit classes stay as inventory/listener adapters. Contact heads render as default player heads first and resolve optional SneakyCharacterManager skin data asynchronously with guarded slot application. Full Gradle test suite passes with `.\gradlew.bat test`; remaining validation should be a human Minecraft-client smoke test for actual inventory controls and asynchronous head visuals.

@@ -3,8 +3,50 @@ package com.danidipp.sneakymisc.phonebook
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class PhonebookGuiActionsTest {
+    @Test
+    fun `next page refreshes the open Phonebook inventory in place`() {
+        val viewerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val ownerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
+        val contacts = (1..43).map { index ->
+            val account = UUID.fromString("00000000-0000-0000-0000-${(1_000 + index).toString().padStart(12, '0')}")
+            val character = UUID.fromString("00000000-0000-0000-0000-${(2_000 + index).toString().padStart(12, '0')}")
+            PhonebookCharacter(account, character, "Contact ${index.toString().padStart(2, '0')}")
+        }
+        val data = PhonebookData(
+            listings = contacts.map { it.characterId }.toSet(),
+            contacts = contacts.associate { contact ->
+                PhonebookContactKeys.forCharacters(ownerCharacter, contact.characterId) to
+                    PhonebookContact.between(ownerCharacter, viewerAccount, contact.characterId, contact.accountId)
+            },
+        )
+        val phonebooks = RecordingPhonebookStore(data)
+        val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
+        val directory = FakePhonebookDirectory(characters = contacts, onlineAccounts = contacts.map { it.accountId }.toSet())
+        val viewer = RecordingPhonebookViewer(viewerAccount)
+
+        val result = guiActions(phonebooks, activeCharacters, directory)
+            .nextPage(
+                viewer,
+                PhonebookBrowserState(viewerAccount, ownerCharacter, page = 0, renderToken = 10),
+            )
+
+        assertEquals(PhonebookPageActionResult.PageChanged, result)
+        assertTrue(viewer.openedModels.isEmpty())
+        assertEquals(
+            listOf(
+                PhonebookBrowserModel(
+                    PhonebookBrowserState(viewerAccount, ownerCharacter, page = 1, renderToken = 99),
+                    listOf(VisiblePhonebookContact(contacts.last().accountId, contacts.last().characterId, "Contact 43")),
+                    hasPreviousPage = true,
+                )
+            ),
+            viewer.refreshedModels,
+        )
+    }
+
     @Test
     fun `calling a visible contact closes the Phonebook and places a call`() {
         val viewerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -38,6 +80,36 @@ class PhonebookGuiActionsTest {
         assertEquals(1, viewer.closeCount)
         assertEquals(emptyList(), viewer.messages)
         assertEquals(emptyList(), viewer.openedModels)
+    }
+
+    @Test
+    fun `calling rejects stale contact item metadata before loading storage or placing a call`() {
+        val viewerAccount = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val ownerCharacter = UUID.fromString("10000000-0000-0000-0000-000000000000")
+        val targetCharacter = UUID.fromString("20000000-0000-0000-0000-000000000000")
+        val phonebooks = RecordingPhonebookStore(PhonebookData())
+        val activeCharacters = FakePhonebookActiveCharacters(mapOf(viewerAccount to ownerCharacter))
+        val caller = RecordingPhonebookCaller()
+        val viewer = RecordingPhonebookViewer(viewerAccount)
+
+        val result = guiActions(phonebooks, activeCharacters, FakePhonebookDirectory(), caller)
+            .callContact(
+                viewer,
+                PhonebookBrowserContactSelection(
+                    holderState = PhonebookBrowserState(viewerAccount, ownerCharacter, page = 1, renderToken = 20),
+                    itemRenderToken = 10,
+                    itemPage = 1,
+                    itemSlot = PhonebookBrowserRenderer.CONTACT_SLOTS.first(),
+                    contactCharacterId = targetCharacter,
+                ),
+            )
+
+        assertEquals(PhonebookContactClickResult.StaleBrowserAction, result)
+        assertEquals(0, phonebooks.loadCount)
+        assertEquals(emptyList(), caller.calls)
+        assertEquals(emptyList(), viewer.messages)
+        assertEquals(emptyList(), viewer.openedModels)
+        assertEquals(emptyList(), viewer.refreshedModels)
     }
 
     @Test
@@ -87,8 +159,9 @@ class PhonebookGuiActionsTest {
                     emptyList(),
                 )
             ),
-            viewer.openedModels,
+            viewer.refreshedModels,
         )
+        assertEquals(emptyList(), viewer.openedModels)
         assertEquals(0, viewer.closeCount)
     }
 
@@ -120,8 +193,9 @@ class PhonebookGuiActionsTest {
                     emptyList(),
                 )
             ),
-            viewer.openedModels,
+            viewer.refreshedModels,
         )
+        assertEquals(emptyList(), viewer.openedModels)
         assertEquals(0, viewer.closeCount)
     }
 
@@ -205,8 +279,9 @@ class PhonebookGuiActionsTest {
                     listOf(VisiblePhonebookContact(remainingAccount, remainingCharacter, "Remaining Character")),
                 )
             ),
-            viewer.openedModels,
+            viewer.refreshedModels,
         )
+        assertEquals(emptyList(), viewer.openedModels)
     }
 
     @Test
@@ -269,8 +344,9 @@ class PhonebookGuiActionsTest {
                     emptyList(),
                 )
             ),
-            viewer.openedModels,
+            viewer.refreshedModels,
         )
+        assertEquals(emptyList(), viewer.openedModels)
     }
 
     private fun guiActions(
@@ -297,6 +373,7 @@ class PhonebookGuiActionsTest {
         override val permitted: Boolean = true
         val messages = mutableListOf<PhonebookMessage>()
         val openedModels = mutableListOf<PhonebookBrowserModel>()
+        val refreshedModels = mutableListOf<PhonebookBrowserModel>()
         var closeCount = 0
             private set
 
@@ -306,6 +383,10 @@ class PhonebookGuiActionsTest {
 
         override fun openInventory(model: PhonebookBrowserModel) {
             openedModels += model
+        }
+
+        override fun refreshInventory(model: PhonebookBrowserModel) {
+            refreshedModels += model
         }
 
         override fun closeInventory() {

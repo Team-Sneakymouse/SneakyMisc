@@ -12,6 +12,7 @@ import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.inventory.InventoryType
+import org.bukkit.entity.Player
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.InventoryView
 import org.bukkit.inventory.ItemStack
@@ -19,6 +20,23 @@ import org.bukkit.plugin.Plugin
 import sun.misc.Unsafe
 
 class PhonebookGuiListenerTest {
+    @Test
+    fun `Character switch closes browsing Phonebook holders only`() {
+        var browsingCloseCount = 0
+        val browsingPlayer = playerWithOpenView(browsingView()) { browsingCloseCount++ }
+
+        listener().closeBrowsingPhonebookOnCharacterSwitch(browsingPlayer)
+
+        assertTrue(browsingCloseCount == 1)
+
+        var exchangeCloseCount = 0
+        val exchangePlayer = playerWithOpenView(exchangeView()) { exchangeCloseCount++ }
+
+        listener().closeBrowsingPhonebookOnCharacterSwitch(exchangePlayer)
+
+        assertTrue(exchangeCloseCount == 0)
+    }
+
     @Test
     fun `browsing inventory clicks are cancelled before routing`() {
         val view = browsingView()
@@ -188,6 +206,15 @@ class PhonebookGuiListenerTest {
         proxy { method, _ ->
             when (method.name) {
                 "getName" -> "SneakyMisc"
+                else -> defaultReturn(method)
+            }
+        }
+
+    private fun playerWithOpenView(view: InventoryView, close: () -> Unit): Player =
+        proxy { method, _ ->
+            when (method.name) {
+                "getOpenInventory" -> view
+                "closeInventory" -> close()
                 else -> defaultReturn(method)
             }
         }
