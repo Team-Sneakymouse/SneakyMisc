@@ -53,6 +53,7 @@ class PhonebookBrowserRenderer {
         const val INVENTORY_SIZE = 54
         const val CONTACTS_PER_PAGE = 42
         val CONTACT_SLOTS = (0 until INVENTORY_SIZE).filter { it % 9 in 1..7 }.take(CONTACTS_PER_PAGE)
+        const val BACKGROUND_SLOT = 0
         const val ADD_CONTACT_SLOT = 8
         const val PREVIOUS_PAGE_SLOT = 45
         const val NEXT_PAGE_SLOT = 53

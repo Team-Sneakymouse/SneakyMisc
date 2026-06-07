@@ -67,7 +67,9 @@ class BukkitPhonebookExchangeController(
                 is PhonebookExchangeEffect.CancelSeekingTimeout ->
                     seekingTimeouts.remove(effect.accountId to effect.token)?.cancel()
                 is PhonebookExchangeEffect.OpenExchangeDecision ->
-                    Bukkit.getPlayer(effect.targetAccountId)?.openInventory(inventoryFactory.create(effect.model))
+                    Bukkit.getPlayer(effect.targetAccountId)?.let { player ->
+                        player.openInventory(inventoryFactory.create(effect.model, player))
+                    }
                 is PhonebookExchangeEffect.ScheduleExchangeClose ->
                     Bukkit.getScheduler().runTask(
                         plugin,

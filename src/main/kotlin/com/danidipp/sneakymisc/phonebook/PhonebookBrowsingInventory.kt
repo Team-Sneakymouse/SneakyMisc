@@ -131,6 +131,7 @@ class PhonebookInventoryFactory(private val plugin: Plugin, private val headReso
         repeat(PhonebookBrowserRenderer.INVENTORY_SIZE) { slot ->
             inventory.setItem(slot, null)
         }
+        inventory.setItem(PhonebookBrowserRenderer.BACKGROUND_SLOT, PhonebookGuiItems.background("background"))
 
         for (item in model.contactItems) {
             inventory.setItem(item.slot, contactItem(model.state, item))
