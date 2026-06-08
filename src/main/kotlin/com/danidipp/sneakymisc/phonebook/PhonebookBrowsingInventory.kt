@@ -87,6 +87,7 @@ object SneakyCharacterPhonebookHeadResolver : PhonebookHeadResolver {
 
 class PhonebookBrowsingHolder(state: PhonebookBrowserState) : InventoryHolder {
     private lateinit var backingInventory: Inventory
+    private var suppressReturnMenuOnClose = false
     var state: PhonebookBrowserState = state
         private set
 
@@ -96,6 +97,20 @@ class PhonebookBrowsingHolder(state: PhonebookBrowserState) : InventoryHolder {
 
     fun updateState(state: PhonebookBrowserState) {
         this.state = state
+    }
+
+    fun suppressReturnMenuOnClose() {
+        suppressReturnMenuOnClose = true
+    }
+
+    fun allowReturnMenuOnClose() {
+        suppressReturnMenuOnClose = false
+    }
+
+    fun consumeReturnMenuSuppression(): Boolean {
+        val suppressed = suppressReturnMenuOnClose
+        suppressReturnMenuOnClose = false
+        return suppressed
     }
 
     override fun getInventory(): Inventory = backingInventory
