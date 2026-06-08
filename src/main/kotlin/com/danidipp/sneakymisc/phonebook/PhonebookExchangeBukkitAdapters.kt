@@ -3,6 +3,7 @@ package com.danidipp.sneakymisc.phonebook
 import java.util.UUID
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.SoundCategory
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
 import org.bukkit.event.EventHandler
@@ -109,8 +110,14 @@ class PhonebookExchangeListener(
 
         val player = event.whoClicked as? Player ?: return
         when (inventoryFactory.selectedDecision(event.currentItem)) {
-            PhonebookExchangeDecision.Accept -> controller.accept(holder.model.exchangeId, player.uniqueId)
-            PhonebookExchangeDecision.Decline -> controller.decline(holder.model.exchangeId, player.uniqueId)
+            PhonebookExchangeDecision.Accept -> {
+                player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
+                controller.accept(holder.model.exchangeId, player.uniqueId)
+            }
+            PhonebookExchangeDecision.Decline -> {
+                player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
+                controller.decline(holder.model.exchangeId, player.uniqueId)
+            }
             null -> Unit
         }
     }

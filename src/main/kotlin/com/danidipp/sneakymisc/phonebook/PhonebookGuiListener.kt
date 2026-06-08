@@ -2,6 +2,7 @@ package com.danidipp.sneakymisc.phonebook
 
 import java.util.UUID
 import net.sneakycharactermanager.paper.handlers.character.LoadCharacterEvent
+import org.bukkit.SoundCategory
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -36,10 +37,12 @@ class PhonebookGuiListener(
         val actionMetadata = inventoryFactory.browserActionMetadata(event.currentItem)
         when (actionMetadata?.action) {
             PhonebookBrowserAction.AddContact -> {
+                player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
                 exchangeGateway.startSeeking(player.uniqueId)
                 return
             }
             PhonebookBrowserAction.PreviousPage -> {
+                player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
                 guiActions.previousPage(
                     BukkitPhonebookViewer(player, inventoryFactory),
                     PhonebookBrowserActionSelection(holder.state, actionMetadata.renderToken, actionMetadata.page, actionMetadata.action),
@@ -47,6 +50,7 @@ class PhonebookGuiListener(
                 return
             }
             PhonebookBrowserAction.NextPage -> {
+                player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
                 guiActions.nextPage(
                     BukkitPhonebookViewer(player, inventoryFactory),
                     PhonebookBrowserActionSelection(holder.state, actionMetadata.renderToken, actionMetadata.page, actionMetadata.action),
@@ -66,12 +70,14 @@ class PhonebookGuiListener(
         )
 
         if (event.click == ClickType.SWAP_OFFHAND) {
+            player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
             guiActions.removeContact(BukkitPhonebookViewer(player, inventoryFactory), selection)
             return
         }
 
         if (!event.isLeftClick) return
 
+        player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
         guiActions.callContact(BukkitPhonebookViewer(player, inventoryFactory), selection)
     }
 
@@ -90,4 +96,3 @@ interface PhonebookExchangeGateway {
 private object NoOpPhonebookExchangeGateway : PhonebookExchangeGateway {
     override fun startSeeking(initiatorAccountId: UUID) = Unit
 }
-
