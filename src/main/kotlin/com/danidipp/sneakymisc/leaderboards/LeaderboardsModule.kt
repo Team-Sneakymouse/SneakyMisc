@@ -34,17 +34,24 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
             loadConfig()
             for (leaderboard in leaderboards.values) {
                 plugin.logger.info("Loading initial data for leaderboard '${leaderboard.name}'")
-                leaderboard.loadInitialData()
-                leaderboard.updateDisplays()
+                leaderboard.loadInitialData {
+                    plugin.logger.info("Updating displays for leaderboard '${leaderboard.name}' after initial data load")
+                    leaderboard.updateDisplays()
+                }
             }
         }
 
         @EventHandler
         fun onPocketbaseEvent(event: AsyncPocketbaseEvent) {
             val record = db.parseEvent(event) ?: return
-            var leaderboard = leaderboards[record.leaderboard] ?: return
-            leaderboard.handleRealtimeUpdate(record, event.action)
-            plugin.logger.info("Received Pocketbase update for ${record.leaderboard} (name: ${record.name}, value: ${record.value}")
+            val leaderboard = leaderboards[record.leaderboard] ?: run {
+                plugin.logger.warning("Received Pocketbase update for unconfigured leaderboard '${record.leaderboard}'")
+                return
+            }
+
+            plugin.logger.info("Received Pocketbase update for ${record.leaderboard} (name: ${record.name}, value: ${record.value})")
+            val applied = leaderboard.handleRealtimeUpdate(record, event.action)
+            if (!applied) return
             
             // Immediately update displays for this leaderboard
             Bukkit.getScheduler().runTask(plugin, Runnable {

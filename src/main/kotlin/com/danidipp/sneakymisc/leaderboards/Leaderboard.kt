@@ -86,19 +86,22 @@ class Leaderboard(
         })
     }
 
-    fun handleRealtimeUpdate(record: LeaderboardRecord, action: RealtimeService.RealtimeActionType) {
+    fun handleRealtimeUpdate(record: LeaderboardRecord, action: RealtimeService.RealtimeActionType): Boolean {
         if (record.leaderboard != name) {
             plugin.logger.warning("Received update for leaderboard '${record.leaderboard}' but expected '$name'")
-            return
+            return false
         }
 
         // only react to events from today's leaderboard (UTC-7)
         val currentServerDate = LocalDate.now(ZoneId.of("UTC-07:00")).toString()
-        if (!record.date.startsWith(currentServerDate)) return
+        if (!record.date.startsWith(currentServerDate)) {
+            plugin.logger.info("Ignoring Pocketbase update for leaderboard '$name' because record date '${record.date}' does not match current leaderboard date '$currentServerDate'")
+            return false
+        }
 
         val uuid = runCatching { UUID.fromString(record.account) }.getOrNull() ?: run {
             plugin.logger.severe("Invalid UUID in leaderboard record: ${record.account}")
-            return
+            return false
         }
 
         if (action == RealtimeService.RealtimeActionType.DELETE) {
@@ -113,6 +116,7 @@ class Leaderboard(
                 date = record.date
             )
         }
+        return true
     }
 
     fun updateDisplays() {
@@ -130,7 +134,7 @@ class Leaderboard(
         }
     }
 
-    fun loadInitialData() {
+    fun loadInitialData(onLoaded: () -> Unit = {}) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, PBRunnable {
             userCache.clear()
             val date = LocalDate.now(ZoneId.of("UTC-07:00"))
@@ -151,6 +155,10 @@ class Leaderboard(
                     date = record.date
                 )
             }
+
+            Bukkit.getScheduler().runTask(plugin, Runnable {
+                onLoaded()
+            })
         })
     }
 }
