@@ -14,9 +14,10 @@ import org.bukkit.event.Listener
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.UUID
 
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
-import com.danidipp.sneakypocketbase.SneakyPocketbase
+import com.danidipp.sneakypocketbase.PocketbaseProvider
 
 class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
     companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells") }
@@ -61,13 +62,13 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
     })
 
     init {
-        val pb = SneakyPocketbase.getInstance()
-        pb.onPocketbaseLoaded {
+        val pb = PocketbaseProvider.getApi()
+        pb.whenReady {
             plugin.logger.info("Subscribing to Pocketbase leaderboard updates ('${db.LEADERBOARDS_COLLECTION}')")
-            pb.subscribeAsync(db.LEADERBOARDS_COLLECTION)
+            pb.subscribe(db.LEADERBOARDS_COLLECTION)
         }
 
-        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, Runnable {
+        Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
             if (leaderboards.isEmpty()) return@Runnable
             
             val dateVariable = MagicSpells.getVariableManager().getVariable("leaderboardCount")
@@ -97,7 +98,15 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
 
                 for ((_, leaderboard) in leaderboards) {
                     val value = leaderboard.valueVariable.getValue(player)
-                    leaderboard.updateScore(character, value, playerDateStr)
+                    leaderboard.updateScore(
+                        LeaderboardScoreSample(
+                            accountId = player.uniqueId,
+                            characterId = UUID.fromString(character.characterUUID),
+                            characterName = character.name,
+                            value = value,
+                            leaderboardDate = playerDateStr,
+                        )
+                    )
                 }
             }
         }, HALF_MINUTE, HALF_MINUTE)

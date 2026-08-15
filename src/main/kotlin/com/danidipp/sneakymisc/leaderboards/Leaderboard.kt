@@ -1,16 +1,14 @@
 package com.danidipp.sneakymisc.leaderboards
 
 import com.danidipp.sneakymisc.SneakyMisc
-import com.danidipp.sneakypocketbase.PBRunnable
+import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
 import com.nisovin.magicspells.variables.Variable
 import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
-import io.github.agrevster.pocketbaseKotlin.services.RealtimeService
-import io.ktor.util.collections.ConcurrentMap
-import net.sneakycharactermanager.paper.handlers.character.Character
 import org.bukkit.Bukkit
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 
 data class LeaderboardEntry(
@@ -22,6 +20,19 @@ data class LeaderboardEntry(
     val value: Int,
 )
 
+data class LeaderboardScoreSample(
+    val accountId: UUID,
+    val characterId: UUID,
+    val characterName: String,
+    val value: Double,
+    val leaderboardDate: String,
+) {
+    fun subjectId(type: LeaderboardType): UUID =
+        if (type == LeaderboardType.PLAYER) accountId else characterId
+
+    fun roundedValue(): Int = value.roundToInt()
+}
+
 class Leaderboard(
     val plugin: SneakyMisc,
     val db: LeaderboardDB,
@@ -30,15 +41,13 @@ class Leaderboard(
     val valueVariable: Variable,
     val displayVariables: List<GlobalStringVariable>
 ) {
-    val userCache = ConcurrentMap<UUID, LeaderboardEntry>()
+    val userCache = ConcurrentHashMap<UUID, LeaderboardEntry>()
     val lastSentValues = mutableMapOf<UUID, Int>()
 
-    fun updateScore(character: Character, value: Double, leaderboardDate: String) {
-        val playerUUID = character.player.uniqueId
-        val characterUUID = UUID.fromString(character.characterUUID)
-        val cacheKey = if (type == LeaderboardType.PLAYER) playerUUID else characterUUID
-        val intValue = value.roundToInt()
-        val leaderboardDatePart = leaderboardDate.take(10)
+    fun updateScore(sample: LeaderboardScoreSample) {
+        val cacheKey = sample.subjectId(type)
+        val intValue = sample.roundedValue()
+        val leaderboardDatePart = sample.leaderboardDate.take(10)
         val cachedEntry = userCache[cacheKey]
 
         // Debounce
@@ -54,14 +63,14 @@ class Leaderboard(
 
         // Remove value
         if (intValue <= 0) {
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, PBRunnable {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
                 val recordId = if (cachedEntry?.date?.startsWith(leaderboardDatePart) == true) {
                     cachedEntry.recordId
                 } else null
 
                 db.deleteRecord(
                     leaderboardName = name,
-                    date = leaderboardDate,
+                    date = sample.leaderboardDate,
                     account = cacheKey.toString(),
                     knownRecordId = recordId
                 )
@@ -70,23 +79,23 @@ class Leaderboard(
         }
 
         // Upsert new value
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, PBRunnable {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
             val recordId = if (cachedEntry?.date?.startsWith(leaderboardDatePart) == true) {
                 cachedEntry.recordId
             } else null
 
             db.upsertRecord(
                 leaderboardName = name,
-                date = leaderboardDate,
+                date = sample.leaderboardDate,
                 account = cacheKey.toString(),
-                characterName = character.name,
+                characterName = sample.characterName,
                 value = intValue,
                 knownRecordId = recordId
             )
         })
     }
 
-    fun handleRealtimeUpdate(record: LeaderboardRecord, action: RealtimeService.RealtimeActionType): Boolean {
+    fun handleRealtimeUpdate(record: LeaderboardRecord, action: AsyncPocketbaseEvent.Action): Boolean {
         if (record.leaderboard != name) {
             plugin.logger.warning("Received update for leaderboard '${record.leaderboard}' but expected '$name'")
             return false
@@ -104,11 +113,11 @@ class Leaderboard(
             return false
         }
 
-        if (action == RealtimeService.RealtimeActionType.DELETE) {
+        if (action == AsyncPocketbaseEvent.Action.DELETE) {
             userCache.remove(uuid)
         } else {
             userCache[uuid] = LeaderboardEntry(
-                recordId = record.id ?: "",
+                    recordId = record.recordId ?: "",
                 playerUUID = uuid, // Placeholder, logically handled by cacheKey concept but entries need structure
                 characterUUID = uuid,
                 characterName = record.name,
@@ -135,7 +144,7 @@ class Leaderboard(
     }
 
     fun loadInitialData(onLoaded: () -> Unit = {}) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, PBRunnable {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
             userCache.clear()
             val date = LocalDate.now(ZoneId.of("UTC-07:00"))
             val records = db.fetchRecords(name, date)
@@ -147,7 +156,7 @@ class Leaderboard(
                     continue
                 }
                 userCache[uuid] = LeaderboardEntry(
-                    recordId = record.id!!,
+                    recordId = record.recordId!!,
                     playerUUID = uuid,
                     characterUUID = uuid,
                     characterName = record.name,

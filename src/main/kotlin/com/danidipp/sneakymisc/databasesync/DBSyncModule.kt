@@ -1,10 +1,11 @@
 package com.danidipp.sneakymisc.databasesync
 
 import com.danidipp.sneakymisc.SneakyMisc
+import com.danidipp.sneakymisc.PocketbaseJson
 import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
-import com.danidipp.sneakypocketbase.PBRunnable
-import com.danidipp.sneakypocketbase.SneakyPocketbase
+import com.danidipp.sneakypocketbase.PocketbaseProvider
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import net.sneakycharactermanager.paper.handlers.character.LoadCharacterEvent
 import org.bukkit.Bukkit
@@ -22,28 +23,32 @@ class DBSyncModule(val logger: Logger) : SneakyModule() {
                 @EventHandler
                 fun onPlayerJoin(event: PlayerJoinEvent) {
                     logger.info("Player ${event.player.name} joined, scheduling account sync")
-                    Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), PBRunnable {
+                    Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), Runnable {
                         logger.info("Running account sync for ${event.player.name}")
-                        val pb = SneakyPocketbase.getInstance()
+                        val pb = PocketbaseProvider.getApi()
                         val player = event.player
                         val uuid = player.uniqueId.toString()
-                        val record = runCatching { pb.pb().records.getOne<AccountRecord>("lom2_accounts", uuid) }.getOrNull()
+                        val record = runCatching {
+                            Json { ignoreUnknownKeys = true }.decodeFromString<AccountRecord>(
+                                pb.getOne("lom2_accounts", uuid).join()
+                            )
+                        }.getOrNull()
                         if (record == null) {
                             logger.info("Creating new account record for ${player.name}")
-                            pb.pb().records.create<AccountRecord>("lom2_accounts", AccountRecord(
+                            pb.create("lom2_accounts", PocketbaseJson.encodeCreate(AccountRecord(
                                 recordId = uuid,
                                 name = player.name,
                                 owner = "",
                                 main = false,
                                 dvz = false,
-                            ).toJson(AccountRecord.serializer()))
-                            return@PBRunnable
+                            ))).join()
+                            return@Runnable
                         }
                         if (record.name != player.name) {
                             logger.info("Updating account record for ${player.name}")
                             record.name = player.name
                         }
-                        pb.pb().records.update<AccountRecord>("lom2_accounts", uuid, record.toJson(AccountRecord.serializer()))
+                        pb.update("lom2_accounts", uuid, PocketbaseJson.encodeUpdate(record)).join()
                     })
                 }
             })
@@ -53,13 +58,15 @@ class DBSyncModule(val logger: Logger) : SneakyModule() {
                     @EventHandler
                     fun onChangeCharacter(event: LoadCharacterEvent) {
                         logger.info("Character ${event.characterName} loaded, scheduling character sync")
-                        Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), PBRunnable {
+                        Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), Runnable {
                             logger.info("Running character sync for ${event.characterName}")
-                            val pb = SneakyPocketbase.getInstance()
+                            val pb = PocketbaseProvider.getApi()
                             val player = event.player
                             val tags = Json.decodeFromString<Map<String, String>>(event.tags)
                             val record = try {
-                                pb.pb().records.getOne<CharacterRecord>("lom2_characters", event.characterUUID)
+                                Json { ignoreUnknownKeys = true }.decodeFromString<CharacterRecord>(
+                                    pb.getOne("lom2_characters", event.characterUUID).join()
+                                )
                             } catch (e: Exception) {
                                 logger.warning("Failed to fetch character record for ${event.characterName} (${event.characterUUID}): ${e.message}")
                                 null
@@ -67,23 +74,23 @@ class DBSyncModule(val logger: Logger) : SneakyModule() {
                             if (record == null) {
                                 logger.info("Creating new character record for ${event.characterName}")
                                 try {
-                                    pb.pb().records.create<CharacterRecord>("lom2_characters", CharacterRecord(
+                                    pb.create("lom2_characters", PocketbaseJson.encodeCreate(CharacterRecord(
                                         recordId = event.characterUUID,
                                         name = event.characterName,
                                         account = player.uniqueId.toString(),
                                         tags = tags
-                                    ).toJson(CharacterRecord.serializer()))
+                                    ))).join()
                                 } catch (e: Exception) {
                                     logger.severe("Failed to create character record for ${event.characterName}: ${e.message}")
-                                    return@PBRunnable
+                                    return@Runnable
                                 }
-                                return@PBRunnable
+                                return@Runnable
                             }
                             if (record.name != event.characterName || record.tags != tags) {
                                 logger.info("Updating character record for ${event.characterName}")
                                 record.name = event.characterName
                                 record.tags = tags
-                                pb.pb().records.update<CharacterRecord>("lom2_characters", event.characterUUID, record.toJson(CharacterRecord.serializer()))
+                                pb.update("lom2_characters", event.characterUUID, PocketbaseJson.encodeUpdate(record)).join()
                             } else {
                                 logger.info("Character record for ${event.characterName} is up to date")
                             }

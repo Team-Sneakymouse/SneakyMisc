@@ -6,10 +6,10 @@ import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.dclock.commands.DClockCommandUtils
 import com.danidipp.sneakymisc.dclock.commands.DClockRootCommand
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
-import com.danidipp.sneakypocketbase.BaseRecord
-import com.danidipp.sneakypocketbase.PBRunnable
-import com.danidipp.sneakypocketbase.SneakyPocketbase
+import com.danidipp.sneakypocketbase.PocketbaseProvider
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
@@ -21,9 +21,10 @@ import java.util.logging.Logger
 @Suppress("PROVIDED_RUNTIME_TOO_LOW")
 @Serializable
 data class SettingRecord(
+    @SerialName("id") val recordId: String = "",
     val key: String = "",
     var value: Long = 0L,
-) : BaseRecord()
+)
 
 data class ClockRuntime(
     val name: String,
@@ -71,8 +72,7 @@ class DClockModule(private val logger: Logger) : SneakyModule(), Listener {
         ensureConfigFile()
         loadConfig()
 
-        val sneakyPB = SneakyPocketbase.getInstance()
-        sneakyPB.onPocketbaseLoaded { subscribeToPocketbase() }
+        PocketbaseProvider.getApi().whenReady { subscribeToPocketbase() }
 
         Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
             refreshAllDisplays()
@@ -163,7 +163,7 @@ class DClockModule(private val logger: Logger) : SneakyModule(), Listener {
         if (event.collectionName != "settings") return
 
         val record = runCatching {
-            event.data.parseRecord<SettingRecord>(Json { ignoreUnknownKeys = true })
+            Json { ignoreUnknownKeys = true }.decodeFromString<SettingRecord>(event.recordJson)
         }.getOrElse {
             logger.warning("Failed to parse DClock settings update: ${it.message}")
             return
@@ -231,9 +231,9 @@ class DClockModule(private val logger: Logger) : SneakyModule(), Listener {
     }
 
     private fun subscribeToPocketbase() {
-        val pb = SneakyPocketbase.getInstance()
-        pb.unsubscribeAsync("settings")
-        pb.subscribeAsync("settings")
+        val pb = PocketbaseProvider.getApi()
+        pb.unsubscribe("settings")
+        pb.subscribe("settings")
         refreshPocketbaseCaches()
     }
 
@@ -247,11 +247,13 @@ class DClockModule(private val logger: Logger) : SneakyModule(), Listener {
             }
         }
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, PBRunnable {
-            val pb = SneakyPocketbase.getInstance()
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+            val pb = PocketbaseProvider.getApi()
             for ((recordId, sources) in sourcesByRecordSnapshot) {
                 val record = runCatching {
-                    pb.pb().records.getOne<SettingRecord>("settings", recordId)
+                    Json { ignoreUnknownKeys = true }.decodeFromString<SettingRecord>(
+                        pb.getOne("settings", recordId).join()
+                    )
                 }.getOrElse {
                     logger.warning("Failed to fetch DClock settings record '$recordId': ${it.message}")
                     null

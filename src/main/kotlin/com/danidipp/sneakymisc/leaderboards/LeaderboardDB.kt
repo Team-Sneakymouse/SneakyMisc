@@ -2,46 +2,45 @@
 package com.danidipp.sneakymisc.leaderboards
 
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
-import com.danidipp.sneakypocketbase.BaseRecord
-import com.danidipp.sneakypocketbase.SneakyPocketbase
-import io.github.agrevster.pocketbaseKotlin.dsl.query.Filter
-import io.github.agrevster.pocketbaseKotlin.dsl.query.SortFields
+import com.danidipp.sneakypocketbase.PocketbaseProvider
+import com.danidipp.sneakymisc.PocketbaseJson
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.util.logging.Logger
 import java.time.LocalDate
 
 @Serializable
 data class LeaderboardRecord(
-    @Transient override val recordId: String? = null,
+    @SerialName("id") val recordId: String? = null,
     val leaderboard: String,
     val date: String,
     val account: String,
     val name: String,
     val value: Int
-): BaseRecord(recordId)
+)
 
 class LeaderboardDB(private val logger: Logger) {
     val LEADERBOARDS_COLLECTION = "lom2_leaderboards"
 
-    suspend fun fetchRecords(leaderboardName: String, date: LocalDate): List<LeaderboardRecord> {
-        val pb = SneakyPocketbase.getInstance().pb()
+    fun fetchRecords(leaderboardName: String, date: LocalDate): List<LeaderboardRecord> {
+        val pb = PocketbaseProvider.getApi()
         val dateStr = date.toString()
         return try {
-            pb.records.getFullList<LeaderboardRecord>(
+            pb.getFullList(
                 LEADERBOARDS_COLLECTION,
                 200,
-                SortFields(),
-                Filter("leaderboard = '$leaderboardName' && date ~ '$dateStr'")
-            )
+                "",
+                "leaderboard = '$leaderboardName' && date ~ '$dateStr'"
+            ).join().map { Json.decodeFromString<LeaderboardRecord>(it) }
         } catch (e: Exception) {
             logger.warning("Failed to fetch records for $leaderboardName: ${e.message}")
             emptyList()
         }
     }
 
-    suspend fun upsertRecord(
+    fun upsertRecord(
         leaderboardName: String,
         date: String,
         account: String,
@@ -49,7 +48,7 @@ class LeaderboardDB(private val logger: Logger) {
         value: Int,
         knownRecordId: String? = null
     ) {
-        val pb = SneakyPocketbase.getInstance().pb()
+        val pb = PocketbaseProvider.getApi()
 
         if (knownRecordId != null) {
             // Update known record
@@ -62,11 +61,11 @@ class LeaderboardDB(private val logger: Logger) {
                     name = characterName,
                     value = value
                 )
-                pb.records.update<LeaderboardRecord>(
+                pb.update(
                     LEADERBOARDS_COLLECTION,
                     knownRecordId,
-                    record.toJson(LeaderboardRecord.serializer())
-                )
+                    PocketbaseJson.encodeUpdate(record)
+                ).join()
             } catch (e: Exception) {
                 logger.warning("Failed to update leaderboard record for $leaderboardName: ${e.message}")
             }
@@ -77,12 +76,12 @@ class LeaderboardDB(private val logger: Logger) {
                 // Use ~ for date to be resilient to formatting differences (T vs space, etc.)
                 val existing = try {
                     val datePart = if (date.length >= 10) date.substring(0, 10) else date
-                    pb.records.getFullList<LeaderboardRecord>(
+                    pb.getFullList(
                         LEADERBOARDS_COLLECTION,
                         1,
-                        SortFields(),
-                        Filter("leaderboard = '$leaderboardName' && date ~ '$datePart' && account = '$account'")
-                    ).firstOrNull()
+                        "",
+                        "leaderboard = '$leaderboardName' && date ~ '$datePart' && account = '$account'"
+                    ).join().firstOrNull()?.let { Json.decodeFromString<LeaderboardRecord>(it) }
                 } catch (e: Exception) {
                     logger.warning("Error searching for existing leaderboard record: ${e.message}")
                     null
@@ -90,11 +89,11 @@ class LeaderboardDB(private val logger: Logger) {
 
                 if (existing != null) {
                     val record = existing.copy(value = value, name = characterName)
-                    pb.records.update<LeaderboardRecord>(
+                    pb.update(
                         LEADERBOARDS_COLLECTION,
-                        existing.id!!,
-                        record.toJson(LeaderboardRecord.serializer())
-                    )
+                        existing.recordId!!,
+                        PocketbaseJson.encodeUpdate(record)
+                    ).join()
                 } else {
                     val record = LeaderboardRecord(
                         leaderboard = leaderboardName,
@@ -103,10 +102,10 @@ class LeaderboardDB(private val logger: Logger) {
                         name = characterName,
                         value = value
                     )
-                    pb.records.create<LeaderboardRecord>(
+                    pb.create(
                         LEADERBOARDS_COLLECTION,
-                        record.toJson(LeaderboardRecord.serializer())
-                    )
+                        PocketbaseJson.encodeCreate(record)
+                    ).join()
                 }
             } catch (e: Exception) {
                 logger.warning("Failed to upsert leaderboard record for $leaderboardName: ${e.message}")
@@ -114,29 +113,29 @@ class LeaderboardDB(private val logger: Logger) {
         }
     }
 
-    suspend fun deleteRecord(
+    fun deleteRecord(
         leaderboardName: String,
         date: String,
         account: String,
         knownRecordId: String? = null
     ) {
-        val pb = SneakyPocketbase.getInstance().pb()
+        val pb = PocketbaseProvider.getApi()
 
         val recordId = knownRecordId ?: try {
             val datePart = if (date.length >= 10) date.substring(0, 10) else date
-            pb.records.getFullList<LeaderboardRecord>(
+            pb.getFullList(
                 LEADERBOARDS_COLLECTION,
                 1,
-                SortFields(),
-                Filter("leaderboard = '$leaderboardName' && date ~ '$datePart' && account = '$account'")
-            ).firstOrNull()?.id
+                "",
+                "leaderboard = '$leaderboardName' && date ~ '$datePart' && account = '$account'"
+            ).join().firstOrNull()?.let { Json.decodeFromString<LeaderboardRecord>(it) }?.recordId
         } catch (e: Exception) {
             logger.warning("Error searching for leaderboard record to delete: ${e.message}")
             null
         } ?: return
 
         try {
-            pb.records.delete(LEADERBOARDS_COLLECTION, recordId)
+            pb.delete(LEADERBOARDS_COLLECTION, recordId).join()
         } catch (e: Exception) {
             logger.warning("Failed to delete leaderboard record for $leaderboardName: ${e.message}")
         }
@@ -145,7 +144,7 @@ class LeaderboardDB(private val logger: Logger) {
     fun parseEvent(event: AsyncPocketbaseEvent): LeaderboardRecord? {
         if (event.collectionName != LEADERBOARDS_COLLECTION) return null
         return try {
-            event.data.parseRecord<LeaderboardRecord>(Json { ignoreUnknownKeys = true })
+            Json { ignoreUnknownKeys = true }.decodeFromString<LeaderboardRecord>(event.recordJson)
         } catch (e: Exception) {
             logger.warning("Error parsing leaderboard event: ${e.message}")
             null

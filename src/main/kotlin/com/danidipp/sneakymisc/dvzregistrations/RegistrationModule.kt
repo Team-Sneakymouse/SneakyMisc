@@ -5,12 +5,8 @@ import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.databasesync.AccountRecord
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
-import com.danidipp.sneakypocketbase.MSVariableSync
-import com.danidipp.sneakypocketbase.PBRunnable
-import com.danidipp.sneakypocketbase.SneakyPocketbase
-import io.github.agrevster.pocketbaseKotlin.dsl.query.Filter
-import io.github.agrevster.pocketbaseKotlin.dsl.query.SortFields
-import io.github.agrevster.pocketbaseKotlin.services.RealtimeService
+import com.danidipp.sneakypocketbase.PocketbaseProvider
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import me.clip.placeholderapi.PlaceholderAPI
 import net.kyori.adventure.text.Component
@@ -40,31 +36,28 @@ class RegistrationModule(logger: Logger): SneakyModule() {
 
     private fun makePreLoginListener(logger: Logger) : Listener{
         return object : Listener {
-            val accounts: MutableMap<UUID, AccountRecord> = mutableMapOf()
-            val sneakyPB = SneakyPocketbase.getInstance()
+            val accounts = RegistrationAccountCache()
+            val sneakyPB = PocketbaseProvider.getApi()
             init {
-                sneakyPB.onPocketbaseLoaded {
+                sneakyPB.whenReady {
                     logger.info("Pocketbase loaded, subscribing to record")
-                    sneakyPB.subscribeAsync("lom2_accounts")
-                    Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), PBRunnable {
-                        val accountRecords = sneakyPB.pb().records.getFullList<AccountRecord>("lom2_accounts", 100,
-                            SortFields(),
-                            Filter("dvz == true")
-                        )
-                        for (record in accountRecords) {
-                            accounts[UUID.fromString(record.id)] = record
-                        }
+                    sneakyPB.subscribe("lom2_accounts")
+                    Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), Runnable {
+                        val accountRecords = sneakyPB.getFullList("lom2_accounts", 100, "", "dvz == true")
+                            .join()
+                            .map { Json { ignoreUnknownKeys = true }.decodeFromString<AccountRecord>(it) }
+                        accounts.replaceWith(accountRecords)
                     })
                 }
             }
             @EventHandler
             fun onPocketbaseEvent(event: AsyncPocketbaseEvent){
                 if (event.collectionName != "lom2_accounts") return
-                val accountRecord = event.data.parseRecord<AccountRecord>(Json { ignoreUnknownKeys = true })
-                if (event.action == RealtimeService.RealtimeActionType.DELETE) {
-                    accounts.remove(UUID.fromString(accountRecord.id))
+                val accountRecord = Json { ignoreUnknownKeys = true }.decodeFromString<AccountRecord>(event.recordJson)
+                if (event.action == AsyncPocketbaseEvent.Action.DELETE) {
+                    accounts.remove(UUID.fromString(accountRecord.recordId))
                 } else {
-                    accounts[UUID.fromString(accountRecord.id)] = accountRecord
+                    accounts.upsert(accountRecord)
                 }
             }
 
@@ -74,8 +67,7 @@ class RegistrationModule(logger: Logger): SneakyModule() {
                 if (Bukkit.getServer().whitelistedPlayers.contains(Bukkit.getOfflinePlayer(playerUUID))) {
                     return // Player is whitelisted, allow login
                 }
-                val account = accounts[playerUUID]
-                if (account != null && account.dvz) {
+                if (accounts.isRegisteredForDvz(playerUUID)) {
                     return // Player is registered for dvz, allow login
                 }
                 event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_WHITELIST,
