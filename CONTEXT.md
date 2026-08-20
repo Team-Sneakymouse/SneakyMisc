@@ -137,6 +137,20 @@ _Avoid_: database sync
 **LoM Archive**:
 A restored archive world from an older era of the server, where legacy items are removed and only MagicSpells items are allowed.
 
+**MagicSpells Item**:
+An item definition currently loaded by the MagicSpells plugin.
+_Avoid_: magic item
+
+### MagicSpells Utilities
+
+**Target Assignment**:
+A one-to-one assignment where each eligible account receives exactly one other eligible account as a target, and no account targets itself. For target assignment, eligible accounts are online accounts in survival mode within the selected WorldGuard region in the command sender's current world.
+_Avoid_: random target roll
+
+**Target State**:
+An account's current target assignment value. It is either another account's name or `0` when the account has no target.
+_Avoid_: target flag
+
 ### Meta Overlay
 
 **Meta Overlay Helper**:

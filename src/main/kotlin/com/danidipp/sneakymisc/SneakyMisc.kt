@@ -7,6 +7,7 @@ import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
 import com.danidipp.sneakymisc.lomarchive.LomArchiveModule
+import com.danidipp.sneakymisc.magicspells.MagicSpellsModule
 import com.danidipp.sneakymisc.metaoverlayhelper.MetaOverlayHelper
 import com.danidipp.sneakymisc.nophysics.NoPhysicsModule
 import com.danidipp.sneakymisc.paintings.PaintingsModule
@@ -27,6 +28,7 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
         if (dependenciesAvailable(DBSyncModule.deps))           registerModule(DBSyncModule(logger))
         if (dependenciesAvailable(RegistrationModule.deps))     registerModule(RegistrationModule(logger))
+        if (dependenciesAvailable(MagicSpellsModule.deps))       registerModule(MagicSpellsModule(this))
         if (dependenciesAvailable(DClockModule.deps))           registerModule(DClockModule(logger))
         if (dependenciesAvailable(LeaderboardsModule.deps))     registerModule(LeaderboardsModule(this))
         registerModule(PaintingsModule())

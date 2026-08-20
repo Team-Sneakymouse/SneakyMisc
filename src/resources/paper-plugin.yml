@@ -21,6 +21,10 @@ dependencies:
     MagicSpells:
       load: BEFORE
       required: false
+    WorldGuard:
+      load: BEFORE
+      required: false
+      join-classpath: true
     SneakyMail:
       load: BEFORE
       required: true
