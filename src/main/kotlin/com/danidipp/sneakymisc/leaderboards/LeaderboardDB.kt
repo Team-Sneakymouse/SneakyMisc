@@ -21,6 +21,11 @@ data class LeaderboardRecord(
     val value: Int
 )
 
+private val leaderboardRecordJson = Json { ignoreUnknownKeys = true }
+
+internal fun decodeLeaderboardRecord(recordJson: String): LeaderboardRecord =
+    leaderboardRecordJson.decodeFromString<LeaderboardRecord>(recordJson)
+
 class LeaderboardDB(private val logger: Logger) {
     val LEADERBOARDS_COLLECTION = "lom2_leaderboards"
 
@@ -33,7 +38,7 @@ class LeaderboardDB(private val logger: Logger) {
                 200,
                 "",
                 "leaderboard = '$leaderboardName' && date ~ '$dateStr'"
-            ).join().map { Json.decodeFromString<LeaderboardRecord>(it) }
+            ).join().map(::decodeLeaderboardRecord)
         } catch (e: Exception) {
             logger.warning("Failed to fetch records for $leaderboardName: ${e.message}")
             emptyList()
@@ -81,7 +86,7 @@ class LeaderboardDB(private val logger: Logger) {
                         1,
                         "",
                         "leaderboard = '$leaderboardName' && date ~ '$datePart' && account = '$account'"
-                    ).join().firstOrNull()?.let { Json.decodeFromString<LeaderboardRecord>(it) }
+                    ).join().firstOrNull()?.let(::decodeLeaderboardRecord)
                 } catch (e: Exception) {
                     logger.warning("Error searching for existing leaderboard record: ${e.message}")
                     null
@@ -128,7 +133,7 @@ class LeaderboardDB(private val logger: Logger) {
                 1,
                 "",
                 "leaderboard = '$leaderboardName' && date ~ '$datePart' && account = '$account'"
-            ).join().firstOrNull()?.let { Json.decodeFromString<LeaderboardRecord>(it) }?.recordId
+            ).join().firstOrNull()?.let(::decodeLeaderboardRecord)?.recordId
         } catch (e: Exception) {
             logger.warning("Error searching for leaderboard record to delete: ${e.message}")
             null
@@ -144,7 +149,7 @@ class LeaderboardDB(private val logger: Logger) {
     fun parseEvent(event: AsyncPocketbaseEvent): LeaderboardRecord? {
         if (event.collectionName != LEADERBOARDS_COLLECTION) return null
         return try {
-            Json { ignoreUnknownKeys = true }.decodeFromString<LeaderboardRecord>(event.recordJson)
+            decodeLeaderboardRecord(event.recordJson)
         } catch (e: Exception) {
             logger.warning("Error parsing leaderboard event: ${e.message}")
             null
