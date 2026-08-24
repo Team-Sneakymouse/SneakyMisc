@@ -41,11 +41,18 @@ data class PhonebookData(val listings: Set<UUID> = emptySet(), val contacts: Map
         contacts[PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)]
 }
 
+interface PhonebookListingLookup {
+    fun isListed(characterId: UUID): Boolean
+}
+
 class PhonebookStorage(private val configPath: Path, private val logger: Logger) :
     PhonebookContactStore,
     PhonebookExchangeStore,
     PhonebookListingStore,
-    PhonebookDiagnosticStore {
+    PhonebookDiagnosticStore,
+    PhonebookListingLookup {
+    private var cachedData: PhonebookData? = null
+
     fun addContact(firstCharacterId: UUID, firstAccountId: UUID, secondCharacterId: UUID, secondAccountId: UUID): Boolean {
         val data = load()
         val key = PhonebookContactKeys.forCharacters(firstCharacterId, secondCharacterId)
@@ -101,7 +108,16 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         return PhonebookExchangePersistenceResult.Created(updatedData)
     }
 
-    override fun load(): PhonebookData = parsePhonebook(logWarnings = true).data
+    override fun load(): PhonebookData {
+        cachedData?.let { return it }
+
+        val data = parsePhonebook(logWarnings = true).data
+        cachedData = data
+        return data
+    }
+
+    override fun isListed(characterId: UUID): Boolean =
+        characterId in load().listings
 
     override fun diagnostics(): PhonebookPersistenceDiagnostics = parsePhonebook(logWarnings = false)
 
@@ -147,10 +163,12 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         configPath.parent?.createDirectories()
 
         val yaml = YamlConfiguration()
-        val sortedListings = mutableListOf<String>()
-        for (listing in data.listings.map { it.toString().lowercase() }.distinct().sorted()) {
-            sortedListings += listing
-        }
+        val sortedListingIds = data.listings
+            .map { it.toString().lowercase() }
+            .distinct()
+            .sorted()
+            .map(UUID::fromString)
+        val sortedListings = sortedListingIds.map { it.toString() }
         yaml.set("listings", sortedListings)
 
         val canonicalContacts = sortedMapOf<String, PhonebookContact>()
@@ -167,6 +185,10 @@ class PhonebookStorage(private val configPath: Path, private val logger: Logger)
         }
 
         yaml.save(configPath.toFile())
+        cachedData = data.copy(
+            listings = sortedListingIds.toCollection(linkedSetOf()),
+            contacts = canonicalContacts,
+        )
     }
 
     private fun parseContact(yaml: YamlConfiguration, key: String, issue: (String) -> Unit): PhonebookContact? {
