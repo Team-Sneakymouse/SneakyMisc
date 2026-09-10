@@ -75,9 +75,9 @@ class PhonebookDebugRendererTest {
         return own + children().joinToString("") { it.collectText() }
     }
 
-    private fun List<Component>.collectClickEvents(): List<ClickEvent> =
+    private fun List<Component>.collectClickEvents(): List<ClickEvent<*>> =
         flatMap { it.collectClickEvents() }
 
-    private fun Component.collectClickEvents(): List<ClickEvent> =
+    private fun Component.collectClickEvents(): List<ClickEvent<*>> =
         listOfNotNull(clickEvent()) + children().flatMap { it.collectClickEvents() }
 }
