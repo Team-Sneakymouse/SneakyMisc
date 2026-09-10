@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc
 
 import com.danidipp.sneakymisc.closeinventory.CloseInventoryModule
+import com.danidipp.sneakymisc.crates.CratesModule
 import com.danidipp.sneakymisc.databasesync.DBSyncModule
 import com.danidipp.sneakymisc.dclock.DClockModule
 import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
@@ -23,6 +24,7 @@ class SneakyMisc : JavaPlugin() {
         instance = this
     }
     override fun onEnable() {
+        registerModule(CratesModule(this))
         if (dependenciesAvailable(ElevatorsModule.deps))        registerModule(ElevatorsModule(logger))
         if (dependenciesAvailable(MetaOverlayHelper.deps))      registerModule(MetaOverlayHelper(logger))
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
