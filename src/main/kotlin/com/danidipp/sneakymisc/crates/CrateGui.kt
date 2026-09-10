@@ -198,7 +198,7 @@ object CrateGui {
 
     fun getFiller(slot: Int, shulkerMaterial: Material): ItemStack? = when (slot) {
         3, 4, 5, 12, 13, 14, 21, 22, 23 -> null
-        8 -> getShulkerBackground(shulkerMaterial)
+        0 -> getShulkerBackground(shulkerMaterial)
         else -> fillerItem
     }
 
