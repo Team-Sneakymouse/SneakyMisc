@@ -7,9 +7,16 @@ import com.danidipp.sneakymisc.dclock.commands.DClockCommandUtils
 import com.danidipp.sneakymisc.dclock.commands.DClockRootCommand
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
 import com.danidipp.sneakypocketbase.PocketbaseProvider
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
@@ -17,12 +24,36 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import java.io.File
 import java.util.logging.Logger
+import kotlin.math.floor
+
+object FlooredLongSerializer : KSerializer<Long> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("FlooredLong", PrimitiveKind.DOUBLE)
+
+    override fun deserialize(decoder: Decoder): Long {
+        val value = decoder.decodeDouble()
+        if (!value.isFinite()) {
+            throw SerializationException("Expected a finite numeric value, found $value")
+        }
+
+        val floored = floor(value)
+        if (floored < Long.MIN_VALUE.toDouble() || floored >= 9_223_372_036_854_775_808.0) {
+            throw SerializationException("Numeric value is outside the Long range: $value")
+        }
+
+        return floored.toLong()
+    }
+
+    override fun serialize(encoder: Encoder, value: Long) {
+        encoder.encodeLong(value)
+    }
+}
 
 @Suppress("PROVIDED_RUNTIME_TOO_LOW")
 @Serializable
 data class SettingRecord(
     @SerialName("id") val recordId: String = "",
     val key: String = "",
+    @Serializable(with = FlooredLongSerializer::class)
     var value: Long = 0L,
 )
 
