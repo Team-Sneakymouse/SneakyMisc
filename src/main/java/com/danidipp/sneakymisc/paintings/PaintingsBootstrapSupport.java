@@ -2,7 +2,6 @@ package com.danidipp.sneakymisc.paintings;
 
 import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import io.papermc.paper.registry.RegistryKey;
-import io.papermc.paper.registry.data.PaintingVariantRegistryEntry;
 import io.papermc.paper.registry.event.RegistryEvents;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -24,7 +23,7 @@ public final class PaintingsBootstrapSupport {
         final Path configPath = context.getDataDirectory().resolve("paintings.yml");
         final LoadResult loadResult = load(configPath, context);
 
-        context.getLifecycleManager().registerEventHandler(RegistryEvents.PAINTING_VARIANT.freeze(), event -> {
+        context.getLifecycleManager().registerEventHandler(RegistryEvents.PAINTING_VARIANT.compose(), event -> {
             int registeredCount = 0;
 
             for (Map.Entry<NamespacedKey, Definition> entry : loadResult.definitions.entrySet()) {
