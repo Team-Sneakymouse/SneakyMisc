@@ -101,7 +101,7 @@ object CrateGui {
             val itemMaterial = clickedItem?.type ?: Material.AIR
             val itemModelData = clickedItem?.itemMeta?.takeIf { it.hasCustomModelData() }?.customModelData ?: 0
             val cursorMaterial = cursorItem.type
-            val cursorModelData = cursorItem.itemMeta.takeIf { it.hasCustomModelData() }?.customModelData ?: 0
+            val cursorModelData = cursorItem.itemMeta?.takeIf { it.hasCustomModelData() }?.customModelData ?: 0
 
             val swapItem = when (event.click) {
                 ClickType.NUMBER_KEY -> event.whoClicked.inventory.getItem(event.hotbarButton)

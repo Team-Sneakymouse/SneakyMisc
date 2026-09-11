@@ -47,6 +47,7 @@ dependencies {
 		exclude("SneakyCharacterManager-*.jar")
 	})
 	testImplementation(kotlin("test"))
+	testImplementation("org.mockito:mockito-core:5.23.0")
 	testImplementation("io.papermc.paper:paper-api:26.2.build.117-stable")
 	testImplementation("me.clip:placeholderapi:2.11.6")
 	testRuntimeOnly(files("../SneakyPocketbase/build/libs/SneakyPocketbase-1.0.jar"))
