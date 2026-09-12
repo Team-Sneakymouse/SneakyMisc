@@ -16,6 +16,7 @@ import com.danidipp.sneakymisc.metaoverlayhelper.MetaOverlayHelper
 import com.danidipp.sneakymisc.nophysics.NoPhysicsModule
 import com.danidipp.sneakymisc.paintings.PaintingsModule
 import com.danidipp.sneakymisc.phonebook.PhonebookModule
+import com.danidipp.sneakymisc.clientupdatereminder.ClientUpdateReminderModule
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
@@ -34,6 +35,7 @@ class SneakyMisc : JavaPlugin() {
     }
     override fun onEnable() {
         registerModule(CratesModule(this))
+        if (dependenciesAvailable(ClientUpdateReminderModule.deps)) registerModule(ClientUpdateReminderModule())
         if (dependenciesAvailable(ChatModule.deps)) {
             chatFlag?.let { registerModule(ChatModule(this, it)) }
         }

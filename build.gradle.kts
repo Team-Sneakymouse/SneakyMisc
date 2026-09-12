@@ -18,6 +18,9 @@ repositories {
 		url = uri("https://maven.enginehub.org/repo/")
 	}
 	mavenCentral()
+	maven {
+		url = uri("https://repo.viaversion.com/")
+	}
 }
 
 dependencies {
@@ -26,6 +29,7 @@ dependencies {
 	compileOnly("io.papermc.paper:paper-api:26.2.build.117-stable")
 	compileOnly("org.apache.logging.log4j:log4j-core:2.24.3")
 	compileOnly("me.clip:placeholderapi:2.11.6")
+	compileOnly("com.viaversion:viaversion-api:5.11.0")
 	compileOnly("io.github.team-sneakymouse:sneakycharactermanager-paper:1.6.0") {
 		exclude(group = "org.jetbrains.kotlin")
 	}

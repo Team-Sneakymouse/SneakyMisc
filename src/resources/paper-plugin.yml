@@ -8,6 +8,10 @@ authors:
 description: "Paper plugin for Lords of Minecraft mechanics that don't justify having a plugin of their own"
 dependencies:
   server:
+    ViaVersion:
+      load: BEFORE
+      required: false
+      join-classpath: true
     SneakyPocketbase:
       load: BEFORE
       required: true
