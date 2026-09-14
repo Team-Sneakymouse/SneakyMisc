@@ -10,5 +10,5 @@ abstract class SneakyModule {
     open val commands: List<SneakyMiscCommand> = listOf()
     open val listeners: List<Listener> = listOf()
 
-    fun registerBrigadierCommands(commands: Commands) {}
+    open fun registerBrigadierCommands(commands: Commands) {}
 }

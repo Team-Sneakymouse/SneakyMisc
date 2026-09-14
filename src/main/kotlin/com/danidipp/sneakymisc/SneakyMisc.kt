@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc
 
 import com.danidipp.sneakymisc.closeinventory.CloseInventoryModule
+import com.danidipp.sneakymisc.attributes.AttributesModule
 import com.danidipp.sneakymisc.chat.ChatModule
 import com.danidipp.sneakymisc.kobold.KoboldModule
 import com.sk89q.worldguard.protection.flags.StateFlag
@@ -34,6 +35,7 @@ class SneakyMisc : JavaPlugin() {
         }
     }
     override fun onEnable() {
+        registerModule(AttributesModule(logger))
         registerModule(CratesModule(this))
         if (dependenciesAvailable(ClientUpdateReminderModule.deps)) registerModule(ClientUpdateReminderModule())
         if (dependenciesAvailable(ChatModule.deps)) {
@@ -61,6 +63,7 @@ class SneakyMisc : JavaPlugin() {
         logger.info("Registering module ${module.javaClass.name} with ${module.commands.size} commands and ${module.listeners.size} listeners")
 
         lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
+            module.registerBrigadierCommands(event.registrar())
             for (command in module.commands) event.registrar().register(command.node, command.description)
         }
 
