@@ -26,7 +26,6 @@ import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.BlockStateMeta
-import org.bukkit.inventory.meta.ItemMeta
 import java.util.UUID
 
 class Crate : InventoryHolder {
@@ -50,26 +49,20 @@ class Crate : InventoryHolder {
                 crate.poof()
             }
 
-            @EventHandler
+            @EventHandler(ignoreCancelled = true)
             fun onShulkerBoxPlace(event: BlockPlaceEvent) {
                 if (!Tag.SHULKER_BOXES.isTagged(event.block.type)) return
+                event.isCancelled = true
+                val prepared = CrateMigration.prepare(event.itemInHand)
+                if (prepared.resolution.definitionOrNull(event.player) == null) return
+                val item = prepared.item.clone().apply { amount = 1 }
+                Crate(item, event.block.location, event.player.facing)
 
-                if (!event.player.hasPermission(ADMIN_PERMISSION) ||
-                    !event.player.isSneaking ||
-                    event.hand != EquipmentSlot.OFF_HAND
-                ) {
-                    event.isCancelled = true
-                    val item = event.itemInHand.clone()
-                    Crate(item, event.block.location, event.player.facing)
-
-                    if (event.player.gameMode != GameMode.CREATIVE) {
-                        val inventory = event.player.inventory
-                        if (inventory.itemInMainHand == item) {
-                            inventory.setItemInMainHand(ItemStack(Material.AIR))
-                        } else if (inventory.itemInOffHand == item) {
-                            inventory.setItemInOffHand(ItemStack(Material.AIR))
-                        }
-                    }
+                if (event.player.gameMode != GameMode.CREATIVE) {
+                    val remainder = prepared.item.clone().apply { amount -= 1 }
+                    event.player.inventory.setItem(event.hand, remainder)
+                } else if (prepared.item !== event.itemInHand) {
+                    event.player.inventory.setItem(event.hand, prepared.item)
                 }
             }
 
@@ -81,7 +74,8 @@ class Crate : InventoryHolder {
 
                 event.isCancelled = true
                 val crate = get(shulker) ?: Crate(shulker)
-                event.player.openInventory(crate.inventory)
+                if (crate.migratePlaced().definitionOrNull(event.player) == null) return
+                if (crate.isValid(event.player)) event.player.openInventory(crate.inventory)
             }
 
             @EventHandler
@@ -90,8 +84,9 @@ class Crate : InventoryHolder {
                 if (!shulker.scoreboardTags.contains(CrateUtils.ENTITY_TAG)) return
 
                 val crate = get(shulker) ?: Crate(shulker)
+                crate.migratePlaced().definitionOrNull(event.player)
                 Bukkit.getScheduler().runTask(SneakyMisc.getInstance(), Runnable {
-                    if (crate.isValid()) crate.poof()
+                    if (shulker.isValid) crate.poof()
                 })
             }
         }
@@ -103,6 +98,11 @@ class Crate : InventoryHolder {
         fun get(backpack: Any): Crate? {
             val sourceId = backpackSourceId(backpack) ?: return null
             return crates[UUID(0L, sourceId.toLong())]
+        }
+
+        fun forget(backpack: Any) {
+            val sourceId = backpackSourceId(backpack) ?: return
+            crates.remove(UUID(0L, sourceId.toLong()))
         }
 
         private fun backpackSourceId(backpack: Any): Int? {
@@ -117,8 +117,6 @@ class Crate : InventoryHolder {
         private fun backpackShulkerBox(backpack: Any): ItemStack? = runCatching {
             backpack.javaClass.getMethod("getShulkerBox").invoke(backpack) as? ItemStack
         }.getOrNull()
-
-        private const val ADMIN_PERMISSION = "dipp.admin"
     }
 
     private val type: CrateType
@@ -148,7 +146,7 @@ class Crate : InventoryHolder {
         inventoryInternal = inventoryFromShulkerBox(item)
             ?: Bukkit.createInventory(this, 36, Component.text("Crate"))
 
-        val createdShulker = CrateUtils.summonShulker(location, name, CrateUtils.getColor(item.type))
+        val createdShulker = CrateUtils.summonShulker(location, name, null)
         shulker = createdShulker
         createdShulker.equipment.setHelmet(item, true)
         createdShulker.equipment.helmetDropChance = 1.0f
@@ -178,7 +176,34 @@ class Crate : InventoryHolder {
         }
     }
 
-    fun isValid(): Boolean {
+    fun isValid(player: Player? = null): Boolean {
+        return resolution.definitionOrNull(player) != null && hasSource()
+    }
+
+    fun replaceBackpackItem(item: ItemStack) {
+        check(inventoryInternal.viewers.isEmpty()) { "Cannot replace an open backpack." }
+        val source = backpack ?: return
+        source.javaClass.getMethod("setShulkerBox", ItemStack::class.java).invoke(source, item)
+        forget(source)
+    }
+
+    private fun migratePlaced(): CrateResolution {
+        val original = resolution
+        if (original is CrateResolution.Success || type != CrateType.SHULKER) return original
+        if (inventoryInternal.viewers.isNotEmpty()) return CrateResolution.Failure("Close the crate before migrating it.")
+        val source = shulker?.equipment?.helmet ?: return original
+        val prepared = CrateMigration.prepare(source)
+        if (prepared.item !== source) {
+            shulker?.equipment?.setHelmet(prepared.item, true)
+            shulker?.color = null
+            shulker?.customName(prepared.item.itemMeta.displayName())
+            itemDisplay?.setItemStack(prepared.item)
+            inventoryInternal = inventoryFromShulkerBox(prepared.item) ?: inventoryInternal
+        }
+        return prepared.resolution
+    }
+
+    private fun hasSource(): Boolean {
         if (type == CrateType.SHULKER) return shulker?.isValid == true
 
         val backpack = backpack ?: return false
@@ -212,21 +237,24 @@ class Crate : InventoryHolder {
 
         val name = itemMeta.displayName() ?: Component.translatable(item.type.translationKey())
         val inventory = Bukkit.createInventory(this, 36, name)
+        val definition = CrateDefinitions.resolve(item).definitionOrNull()
+        definition?.let { inventory.maxStackSize = it.maxStackSize }
         val oldContents = shulkerBox.inventory.contents
         val contents = arrayOfNulls<ItemStack>(36)
         for (slot in contents.indices) {
             if (slot < oldContents.size) contents[slot] = oldContents[slot]
-            if (contents[slot] == null) contents[slot] = CrateGui.getFiller(slot, shulkerBox.type)
+            if (contents[slot] == null) contents[slot] = CrateGui.getFiller(slot, definition)
         }
         inventory.contents = contents
         return inventory
     }
 
     fun save() {
+        if (type == CrateType.BACKPACK && !hasSource()) return
         val contents = inventoryInternal.contents
             .take(27)
             .map { stack ->
-                if (stack == null || (!stack.isSimilar(CrateGui.fillerItem) && stack.type != Material.JIGSAW)) stack else null
+                stack?.takeUnless(CrateGui::isDecoration)
             }
             .toTypedArray()
 
@@ -298,16 +326,14 @@ class Crate : InventoryHolder {
             }
         }
 
-    val label: ItemStack?
-        get() {
-            val item = shulkerBox ?: return null
-            val itemMeta: ItemMeta = item.itemMeta
-            return if (itemMeta.hasCustomModelData()) {
-                CrateUtils.getLabel(item.type, itemMeta.customModelData)
-            } else {
-                null
-            }
-        }
+    val definition: CrateDefinition?
+        get() = resolution.definitionOrNull()
+
+    private val resolution: CrateResolution
+        get() = CrateDefinitions.resolve(
+            if (type == CrateType.BACKPACK) backpack?.let(::backpackShulkerBox)
+            else shulker?.equipment?.helmet,
+        )
 
     val location: Location
         get() = if (type == CrateType.BACKPACK) {

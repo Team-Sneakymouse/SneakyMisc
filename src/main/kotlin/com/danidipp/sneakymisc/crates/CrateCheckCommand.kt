@@ -6,11 +6,11 @@ import com.mojang.brigadier.context.CommandContext
 import com.mojang.brigadier.suggestion.SuggestionProvider
 import com.mojang.brigadier.suggestion.SuggestionsBuilder
 import com.mojang.brigadier.tree.LiteralCommandNode
+import com.nisovin.magicspells.MagicSpells
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Tag
@@ -41,7 +41,10 @@ class CrateCheckCommand {
         val player = Bukkit.getPlayer(playerName)
             ?: return fail(context, "Player not found")
 
-        val shulkerBoxItem = player.inventory.itemInMainHand
+        val original = player.inventory.itemInMainHand
+        val prepared = CrateMigration.prepare(original)
+        val definition = prepared.resolution.definitionOrNull(player)
+        val shulkerBoxItem = prepared.item
         if (!Tag.SHULKER_BOXES.isTagged(shulkerBoxItem.type)) {
             sender.sendMessage(
                 player.name().append(
@@ -51,11 +54,28 @@ class CrateCheckCommand {
             return Command.SINGLE_SUCCESS
         }
 
-        val shulkerModelData = shulkerBoxItem.itemMeta.customModelData
-        val shulkerLabel = CrateUtils.getLabel(shulkerBoxItem.type, shulkerModelData)
-        if (shulkerLabel == null) {
+        if (definition == null) {
             sender.sendMessage(player.name().append(Component.text(" is not holding a valid crate.", NamedTextColor.RED)))
             return Command.SINGLE_SUCCESS
+        }
+
+        val itemMeta = original.itemMeta
+        val data = itemMeta.persistentDataContainer
+        val id = if (data.has(CrateMigration.backpackKey, PersistentDataType.INTEGER)) {
+            data.get(CrateMigration.backpackKey, PersistentDataType.INTEGER)
+        } else null
+        val crate = id?.let { Crate.get(UUID(0L, it.toLong())) }
+        if (crate != null && crate.inventory.viewers.isNotEmpty()) {
+            cast(player.name, "item-crate-cratepack-fail")
+            return Command.SINGLE_SUCCESS
+        }
+        if (shulkerBoxItem !== original) {
+            try {
+                crate?.replaceBackpackItem(shulkerBoxItem)
+            } catch (exception: ReflectiveOperationException) {
+                return fail(context, "Could not update the backpack for crate migration: ${exception.message}")
+            }
+            player.inventory.setItemInMainHand(shulkerBoxItem)
         }
 
         val boxMeta = (shulkerBoxItem.itemMeta as? BlockStateMeta)?.blockState as? org.bukkit.block.ShulkerBox
@@ -63,53 +83,21 @@ class CrateCheckCommand {
             return fail(context, "Could not retrieve shulker box state.")
         }
 
-        if (!validateStacks(boxMeta.inventory.contents, shulkerLabel)) {
+        if (shulkerBoxItem.amount != 1 || !definition.isFull(boxMeta.inventory.contents)) {
             cast(player.name, "item-crate-cratepack-fail")
             return Command.SINGLE_SUCCESS
         }
 
-        val itemMeta = shulkerBoxItem.itemMeta
-        val persistentKey = itemMeta.persistentDataContainer.keys.firstOrNull { it.toString() == CMI_BACKPACK_KEY }
-        val id = persistentKey?.let { itemMeta.persistentDataContainer.get(it, PersistentDataType.INTEGER) }
-        val crate = id?.let { Crate.get(UUID(0L, it.toLong())) }
-        if (crate != null && crate.inventory.viewers.isNotEmpty()) {
-            cast(player.name, "item-crate-cratepack-fail")
-            return Command.SINGLE_SUCCESS
+        if (MagicSpells.getSpellByInternalName(definition.packingSpell) == null) {
+            return fail(context, "Packing spell not found: ${definition.packingSpell}")
         }
-
         player.inventory.setItemInMainHand(ItemStack(Material.AIR))
-        val crateName = shulkerLabel.itemMeta.displayName()
-            ?.let(PlainTextComponentSerializer.plainText()::serialize)
-            ?: "cratepack"
-        cast(player.name, "item-crate-$crateName-success")
+        cast(player.name, definition.packingSpell)
         return Command.SINGLE_SUCCESS
     }
 
     private fun cast(playerName: String, spell: String) {
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "ms cast as $playerName $spell")
-    }
-
-    private fun validateStacks(contents: Array<ItemStack?>, label: ItemStack): Boolean {
-        var validStacks = 0
-        for (stack in contents) {
-            if (stack == null || stack.type == Material.AIR) continue
-
-            val materialCorrect = stack.type == label.type
-            val modelDataCorrect = if (
-                stack.hasItemMeta() &&
-                label.hasItemMeta() &&
-                stack.itemMeta.hasCustomModelData() &&
-                label.itemMeta.hasCustomModelData()
-            ) {
-                stack.itemMeta.customModelData == label.itemMeta.customModelData
-            } else {
-                true
-            }
-
-            if (!materialCorrect || !modelDataCorrect || stack.amount != REQUIRED_STACK_SIZE) return false
-            validStacks++
-        }
-        return validStacks == REQUIRED_STACKS
     }
 
     private fun fail(context: CommandContext<CommandSourceStack>, message: String): Int {
@@ -126,8 +114,5 @@ class CrateCheckCommand {
     private companion object {
         const val PERMISSION = "dipp.commands.cratecheck"
         const val USAGE = "Usage: /cratecheck <player>"
-        const val CMI_BACKPACK_KEY = "cmilib:cmibackpack"
-        const val REQUIRED_STACKS = 9
-        const val REQUIRED_STACK_SIZE = 99
     }
 }
