@@ -3,6 +3,7 @@ package com.danidipp.sneakymisc
 import com.danidipp.sneakymisc.closeinventory.CloseInventoryModule
 import com.danidipp.sneakymisc.attributes.AttributesModule
 import com.danidipp.sneakymisc.chat.ChatModule
+import com.danidipp.sneakymisc.chat.ChatFlags
 import com.danidipp.sneakymisc.kobold.KoboldModule
 import com.sk89q.worldguard.protection.flags.StateFlag
 import com.danidipp.sneakymisc.crates.CratesModule
@@ -29,7 +30,7 @@ class SneakyMisc : JavaPlugin() {
     override fun onLoad() {
         instance = this
         if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null) {
-            chatFlag = runCatching { ChatModule.registerChatFlag() }
+            chatFlag = runCatching { ChatFlags.registerChatFlag() }
                 .onFailure { logger.severe("Cannot enable chat: ${it.message}") }
                 .getOrNull()
         }
