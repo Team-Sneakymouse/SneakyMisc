@@ -33,9 +33,6 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
-    SneakyMail:
-      load: BEFORE
-      required: true
     SneakyCellPhones:
       load: BEFORE
       required: false
