@@ -11,6 +11,7 @@ import com.danidipp.sneakymisc.databasesync.DBSyncModule
 import com.danidipp.sneakymisc.dclock.DClockModule
 import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
+import com.danidipp.sneakymisc.forceloadregion.ForceLoadRegionModule
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
 import com.danidipp.sneakymisc.lomarchive.LomArchiveModule
 import com.danidipp.sneakymisc.magicspells.MagicSpellsModule
@@ -50,6 +51,7 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(DBSyncModule.deps))           registerModule(DBSyncModule(logger))
         if (dependenciesAvailable(RegistrationModule.deps))     registerModule(RegistrationModule(logger))
         if (dependenciesAvailable(MagicSpellsModule.deps))       registerModule(MagicSpellsModule(this))
+        if (dependenciesAvailable(ForceLoadRegionModule.deps))  registerModule(ForceLoadRegionModule())
         if (dependenciesAvailable(DClockModule.deps))           registerModule(DClockModule(logger))
         if (dependenciesAvailable(LeaderboardsModule.deps))     registerModule(LeaderboardsModule(this))
         registerModule(PaintingsModule())

@@ -151,6 +151,11 @@ _Avoid_: random target roll
 An account's current target assignment value. It is either another account's name or `0` when the account has no target.
 _Avoid_: target flag
 
+### Region Force-loading
+
+**Fully Contained Chunk**:
+A chunk whose complete 16 by 16 horizontal block footprint lies inside a WorldGuard region. The region's vertical bounds do not affect chunk selection because Minecraft force-loading operates on whole chunks.
+
 ### Meta Overlay
 
 **Meta Overlay Helper**:
