@@ -1,0 +1,31 @@
+{
+  "type": "minecraft:add",
+  "argument1": {
+    "type": "minecraft:add",
+    "argument1": {
+      "type": "minecraft:y_clamped_gradient",
+      "from_y": -64,
+      "to_y": 320,
+      "from_value": 0.5,
+      "to_value": -2.5
+    },
+    "argument2": {
+      "type": "minecraft:add",
+      "argument1": 0.5390625,
+      "argument2": {
+        "type": "minecraft:mul",
+        "argument1": 0.0078125,
+        "argument2": "plots:plots/surface_level"
+      }
+    }
+  },
+  "argument2": {
+    "type": "minecraft:mul",
+    "argument1": 0.5,
+    "argument2": {
+      "type": "minecraft:mul",
+      "argument1": 0.5,
+      "argument2": "plots:plots/offset"
+    }
+  }
+}

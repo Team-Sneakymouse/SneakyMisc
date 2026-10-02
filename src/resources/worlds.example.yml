@@ -1,0 +1,80 @@
+# Copy to plugins/SneakyMisc/worlds.yml and edit the IDs you use.
+# Remove the matching old datapacks after validating the generated pack on a copy of your server.
+# Changes to definitions take effect on server restart. Existing chunks are never regenerated.
+
+dimension-types:
+  'plots:plots':
+    build-min-y: 0
+    build-height: 512
+    logical-height: 384
+  'lom:rebeii':
+    build-min-y: -128
+    build-height: 384
+    logical-height: 384
+  'lom:peak':
+    build-min-y: -2032
+    build-height: 4064
+    logical-height: 4064
+
+biomes:
+  'plots:plots':
+    temperature: 0.69
+    downfall: 0.69
+    precipitation: true
+    sky-color: '#b10a00'
+    fog-color: '#ff6343'
+    water-color: '#db5a00'
+    water-fog-color: '#430500'
+  'plots:adventure_biome':
+    temperature: 0.69
+    downfall: 0.69
+    precipitation: true
+    sky-color: '#00b1a2'
+    fog-color: '#43ffdd'
+    water-color: '#00d7db'
+    water-fog-color: '#00756a'
+    vegetation-features:
+      - 'minecraft:patch_tall_grass_2'
+      - 'minecraft:trees_plains'
+      - 'minecraft:flower_plains'
+      - 'minecraft:patch_grass_plain'
+      - 'minecraft:fancy_oak_checked'
+  'lom:peak_base':
+    temperature: 0.69
+    downfall: 0.69
+    precipitation: true
+    sky-color: '#78a7ff'
+    fog-color: '#c0d8ff'
+    water-color: '#3f76e4'
+    water-fog-color: '#050533'
+
+plots-generators:
+  'plots:plots_generator':
+    biome: 'plots:plots'
+    terrain-y: 35
+    noise-min-y: -64
+    noise-height: 384
+    surface: corruption
+#  'plots:adventure_generator':
+#    biome: 'plots:adventure_biome'
+#    terrain-y: 64
+#    noise-min-y: -64
+#    noise-height: 384
+#    surface: grass
+
+# Only declare new worlds here. Minecraft creates them from the generated
+# dimension definitions at startup; Multiverse 5 then discovers and manages them.
+# Existing Multiverse worlds should keep their saved world generation settings.
+# worlds:
+#   'sneakymisc:new_peak':
+#     dimension-type: 'lom:peak'
+#     generator:
+#       type: flat
+#       biome: 'lom:peak_base'
+#       layers: []
+#   'sneakymisc:new_plots':
+#     dimension-type: 'plots:plots'
+#     generator:
+#       type: noise
+#       settings: 'plots:plots_generator'
+#       biome: 'plots:plots'
