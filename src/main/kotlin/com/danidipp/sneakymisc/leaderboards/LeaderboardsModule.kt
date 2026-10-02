@@ -46,7 +46,7 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
         fun onPocketbaseEvent(event: AsyncPocketbaseEvent) {
             val record = db.parseEvent(event) ?: return
             val leaderboard = leaderboards[record.leaderboard] ?: run {
-                plugin.logger.warning("Received Pocketbase update for unconfigured leaderboard '${record.leaderboard}'")
+                plugin.logger.fine("Received Pocketbase update for unconfigured leaderboard '${record.leaderboard}'")
                 return
             }
 
