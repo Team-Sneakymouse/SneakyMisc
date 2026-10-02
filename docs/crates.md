@@ -2,10 +2,12 @@
 
 A crate is an uncolored `minecraft:shulker_box` with these string PDC entries:
 
-- `magicspells:magicitem`: the crate's registered MagicItem ID.
+- `magicspells:magicitem`: optional, the crate's registered MagicItem ID.
 - `magicspells:magicspellpermanentdata_crate_item`: the registered MagicItem ID allowed inside.
 
-Both IDs must resolve in the loaded MagicSpells registry. Inventory clicks, shift transfers, hotbar and offhand swaps, drags, and packing match the contained item's `magicspells:magicitem` exactly. Material, display name, and numeric custom model data do not determine its identity.
+The contained ID must resolve in the loaded MagicSpells registry. If the crate's own ID is present, it must also resolve. A present but blank or incorrectly typed `magicitem` tag is rejected. Inventory clicks, shift transfers, hotbar and offhand swaps, drags, and packing match the contained item's `magicspells:magicitem` exactly. Material, display name, and numeric custom model data do not determine its identity.
+
+Crates without their own `magicspells:magicitem` tag provide storage only. They use the same placement, GUI, item restrictions, and configured stack limit. `/cratecheck` rejects packing them without consuming or changing the item. These crates are excluded as both sources and targets of all current and future item migrations, even if another required field is invalid. Migration code must retain this exclusion.
 
 Resolution returns either a definition or a failure reason. When placement, opening, GUI interaction, or packing fails to resolve a crate, the player involved receives the reason in chat if they have `dipp.debug`. For `/cratecheck <player>`, this is the named player whose crate is checked, including when the command runs from the console. Internal reads without a player context remain silent.
 

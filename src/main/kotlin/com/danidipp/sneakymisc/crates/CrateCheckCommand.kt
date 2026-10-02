@@ -59,6 +59,9 @@ class CrateCheckCommand {
             return Command.SINGLE_SUCCESS
         }
 
+        val packingSpell = definition.packingSpell
+            ?: return fail(context, "This crate is for storage only and cannot be packed.")
+
         val itemMeta = original.itemMeta
         val data = itemMeta.persistentDataContainer
         val id = if (data.has(CrateMigration.backpackKey, PersistentDataType.INTEGER)) {
@@ -88,11 +91,11 @@ class CrateCheckCommand {
             return Command.SINGLE_SUCCESS
         }
 
-        if (MagicSpells.getSpellByInternalName(definition.packingSpell) == null) {
-            return fail(context, "Packing spell not found: ${definition.packingSpell}")
+        if (MagicSpells.getSpellByInternalName(packingSpell) == null) {
+            return fail(context, "Packing spell not found: $packingSpell")
         }
         player.inventory.setItemInMainHand(ItemStack(Material.AIR))
-        cast(player.name, definition.packingSpell)
+        cast(player.name, packingSpell)
         return Command.SINGLE_SUCCESS
     }
 

@@ -124,6 +124,27 @@ class CrateMigrationTest {
     }
 
     @Test
+    fun `storage-only crates are excluded from migration even when invalid`() {
+        for (item in listOf(box(null).item, box(null, model = null).item, box(null, Material.ORANGE_SHULKER_BOX).item)) {
+            val result = CrateMigration.prepare(item, registry::get) { error("Storage-only crates must not be searched") }
+            assertSame(item, result.item)
+            verify(item, never()).setItemMeta(any())
+        }
+        verify(template.item, never()).clone()
+    }
+
+    @Test
+    fun `storage-only templates cannot be migration targets`() {
+        val storage = box(null)
+        registry[canonicalId] = storage.item
+        val original = box(canonicalId.lowercase(), Material.ORANGE_SHULKER_BOX)
+        val result = prepare(original.item)
+        assertSame(original.item, result.item)
+        assertTrue(assertIs<CrateResolution.Failure>(result.resolution).reason.contains("excluded from migration"))
+        verify(storage.item, never()).clone()
+    }
+
+    @Test
     fun `missing or ambiguous registry matches leave the original untouched`() {
         val unknown = box("item-crate-unknown", Material.ORANGE_SHULKER_BOX)
         val missing = prepare(unknown.item)

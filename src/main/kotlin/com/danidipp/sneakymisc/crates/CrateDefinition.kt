@@ -11,12 +11,12 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 
 data class CrateDefinition(
-    val crateItemId: String,
+    val crateItemId: String?,
     val contentItemId: String,
     val itemModel: NamespacedKey,
     val maxStackSize: Int,
 ) {
-    val packingSpell: String = "${crateItemId.removeSuffix("WIP")}-success"
+    val packingSpell: String? = crateItemId?.let { "${it.removeSuffix("WIP")}-success" }
 
     fun accepts(item: ItemStack?): Boolean =
         item != null && item.type != Material.AIR && CrateDefinitions.magicItemId(item) == contentItemId
@@ -62,7 +62,9 @@ object CrateDefinitions {
             return CrateResolution.Failure("Expected an uncolored SHULKER_BOX, got ${item.type}.")
         }
         val crateId = magicItemId(item)?.takeIf { it.isNotBlank() }
-            ?: return CrateResolution.Failure("Missing, blank, or non-string PDC '$magicItemKey'.")
+        if (crateId == null && item.itemMeta?.persistentDataContainer?.has(magicItemKey) == true) {
+            return CrateResolution.Failure("Blank or non-string PDC '$magicItemKey'.")
+        }
         val contentId = stringData(item, contentItemKey)?.takeIf { it.isNotBlank() }
             ?: return CrateResolution.Failure("Missing, blank, or non-string PDC '$contentItemKey'.")
         val findItem = lookup ?: run {
@@ -71,11 +73,16 @@ object CrateDefinitions {
             }
             MagicItems::getItemByInternalName
         }
-        if (findItem(crateId) == null) return CrateResolution.Failure("Crate MagicItem '$crateId' is not registered.")
+        if (crateId != null && findItem(crateId) == null) {
+            return CrateResolution.Failure("Crate MagicItem '$crateId' is not registered.")
+        }
         val content = findItem(contentId)
             ?: return CrateResolution.Failure("Contained MagicItem '$contentId' is not registered.")
         val model = item.itemMeta?.itemModel
-            ?: return CrateResolution.Failure("Crate item '$crateId' has no explicit item model.")
+            ?: return CrateResolution.Failure(
+                if (crateId != null) "Crate item '$crateId' has no explicit item model."
+                else "Storage-only crate has no explicit item model.",
+            )
         val maxStackSize = content.maxStackSize
         if (maxStackSize <= 0) {
             return CrateResolution.Failure("Contained MagicItem '$contentId' has invalid max stack size $maxStackSize.")

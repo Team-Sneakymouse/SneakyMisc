@@ -78,6 +78,14 @@ class CrateGuiTest {
     }
 
     @Test
+    fun `storage-only crates use the same content restrictions`() {
+        `when`(crate.definition).thenReturn(definition.copy(crateItemId = null))
+        assertFalse(click(InventoryAction.PLACE_ALL, cursor = magicItem()).isCancelled)
+        assertTrue(click(InventoryAction.PLACE_ALL, cursor = magicItem("item-pearl-fine")).isCancelled)
+        assertFalse(click(InventoryAction.PICKUP_ALL, current = magicItem()).isCancelled)
+    }
+
+    @Test
     fun `shift transfers enforce identity without blocking the player inventory`() {
         assertFalse(click(InventoryAction.MOVE_TO_OTHER_INVENTORY, magicItem(), slot = 36,
             click = ClickType.SHIFT_LEFT).isCancelled)

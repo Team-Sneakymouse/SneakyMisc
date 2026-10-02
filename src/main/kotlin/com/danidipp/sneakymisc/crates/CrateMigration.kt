@@ -20,13 +20,14 @@ object CrateMigration {
         lookup: ((String) -> ItemStack?)? = null,
         itemIds: (() -> Collection<String>)? = null,
     ): Prepared {
+        // Storage-only crates have no identity to migrate. Keep this exclusion for future migrations too.
+        val storedId = CrateDefinitions.magicItemId(item)?.takeIf { it.isNotBlank() }
         val original = CrateDefinitions.resolve(item, lookup)
+        if (storedId == null) return Prepared(item, original)
         if (original is CrateResolution.Success) return Prepared(item, original)
         if (item.type != Material.SHULKER_BOX && !item.type.name.endsWith("_SHULKER_BOX")) {
             return Prepared(item, original)
         }
-        val storedId = CrateDefinitions.magicItemId(item)?.takeIf { it.isNotBlank() }
-            ?: return Prepared(item, original)
         val id = if (storedId.startsWith("magicitem:", ignoreCase = true)) storedId.substringAfter(':') else storedId
         val findItem = lookup ?: run {
             if (!Bukkit.getPluginManager().isPluginEnabled("MagicSpells")) return Prepared(item, original)
@@ -41,6 +42,9 @@ object CrateMigration {
         val template = findItem(matchedId) ?: return failure("MagicItem '$matchedId' is no longer registered.")
         val resolved = CrateDefinitions.resolve(template, findItem)
         if (resolved is CrateResolution.Failure) return failure("MagicItem '$matchedId' is not a valid crate: ${resolved.reason}")
+        if ((resolved as CrateResolution.Success).definition.crateItemId == null) {
+            return failure("MagicItem '$matchedId' is a storage-only crate and is excluded from migration.")
+        }
 
         val sourceMeta = item.itemMeta as? BlockStateMeta ?: return failure("The original item has no shulker inventory.")
         val source = sourceMeta.blockState as? ShulkerBox ?: return failure("The original item has no shulker inventory.")

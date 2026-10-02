@@ -37,6 +37,7 @@ internal fun magicItem(
     `when`(item.itemMeta).thenReturn(meta)
     `when`(meta.itemModel).thenReturn(itemModel)
     `when`(meta.persistentDataContainer).thenReturn(pdc)
+    `when`(pdc.has(NamespacedKey("magicspells", "magicitem"))).thenReturn(id != null)
     `when`(pdc.has(NamespacedKey("magicspells", "magicitem"), PersistentDataType.STRING)).thenReturn(id != null)
     `when`(pdc.has(NamespacedKey("magicspells", "magicspellpermanentdata_crate_item"),
         PersistentDataType.STRING)).thenReturn(contentId != null)
@@ -69,6 +70,47 @@ class CrateDefinitionTest {
         val definition = assertNotNull(CrateDefinitions.resolve(crate, registry::get).definitionOrNull())
         assertEquals("item-crate-pearlRaw-success", definition.copy(crateItemId = "item-crate-pearlRaw").packingSpell)
         assertEquals("item-crate-WIP-pearl-success", definition.copy(crateItemId = "item-crate-WIP-pearl").packingSpell)
+    }
+
+    @Test
+    fun `a crate without its own MagicItem id resolves for storage only`() {
+        val storage = magicItem(null, Material.SHULKER_BOX, contentId = "item-pearl-raw", itemModel = crateModel)
+        val requested = mutableListOf<String>()
+        val definition = assertNotNull(CrateDefinitions.resolve(storage) { id ->
+            requested.add(id)
+            registry[id]
+        }.definitionOrNull())
+        assertNull(definition.crateItemId)
+        assertNull(definition.packingSpell)
+        assertEquals(listOf("item-pearl-raw"), requested)
+        assertEquals(crateModel, definition.itemModel)
+        assertEquals(16, definition.maxStackSize)
+        assertTrue(definition.accepts(magicItem("item-pearl-raw")))
+        assertFalse(definition.accepts(magicItem("item-pearl-fine")))
+    }
+
+    @Test
+    fun `storage-only crates still require the base material registered contents and a model`() {
+        fun storage(material: Material = Material.SHULKER_BOX, model: NamespacedKey? = crateModel) =
+            magicItem(null, material, contentId = "item-pearl-raw", itemModel = model)
+        assertEquals("Expected an uncolored SHULKER_BOX, got ORANGE_SHULKER_BOX.",
+            failure(storage(Material.ORANGE_SHULKER_BOX)))
+        assertEquals("Storage-only crate has no explicit item model.", failure(storage(model = null)))
+        registry.remove("item-pearl-raw")
+        assertEquals("Contained MagicItem 'item-pearl-raw' is not registered.", failure(storage()))
+    }
+
+    @Test
+    fun `a malformed present crate identity does not become a storage-only crate`() {
+        for (id in listOf("", " ")) {
+            assertEquals("Blank or non-string PDC 'magicspells:magicitem'.",
+                failure(magicItem(id, Material.SHULKER_BOX, contentId = "item-pearl-raw", itemModel = crateModel)))
+        }
+        val data = crate.itemMeta.persistentDataContainer
+        val key = NamespacedKey("magicspells", "magicitem")
+        `when`(data.has(key, PersistentDataType.STRING)).thenReturn(false)
+        assertEquals("Blank or non-string PDC '$key'.", failure(crate))
+        verify(data, never()).get(key, PersistentDataType.STRING)
     }
 
     @Test
@@ -159,7 +201,7 @@ class CrateDefinitionTest {
         assertEquals("No crate item was provided.", failure(null))
         assertEquals("Expected an uncolored SHULKER_BOX, got ORANGE_SHULKER_BOX.",
             failure(magicItem(material = Material.ORANGE_SHULKER_BOX)))
-        assertEquals("Missing, blank, or non-string PDC 'magicspells:magicitem'.",
+        assertEquals("Missing, blank, or non-string PDC 'magicspells:magicspellpermanentdata_crate_item'.",
             failure(magicItem(null, Material.SHULKER_BOX)))
         assertEquals("Missing, blank, or non-string PDC 'magicspells:magicspellpermanentdata_crate_item'.",
             failure(magicItem("item-crate-pearlRawWIP", Material.SHULKER_BOX, contentId = " ")))
