@@ -15,7 +15,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -35,12 +35,6 @@ jobs:
           ../SneakyPocketbase/gradlew -p ../SneakyPocketbase apiJar --no-daemon --console=plain
           api_jar="$(ls ../SneakyPocketbase/build/libs/*-api.jar | head -1)"
           cp "$api_jar" ../SneakyPocketbase/build/libs/SneakyPocketbase-1.0-api.jar
-
-      - name: Prepare MagicSpells compile dependency
-        run: |
-          mkdir -p libs
-          curl -fsSL -o libs/MagicSpells-4.0-Beta-13.jar \
-            "https://maven.sneakyrp.com/releases/io/github/team-sneakymouse/magicspells-core/2026.10.09-17f579714ffe/magicspells-core-2026.10.09-17f579714ffe.jar"
 
       - name: Build and check
         run: ./gradlew build --no-daemon --console=plain

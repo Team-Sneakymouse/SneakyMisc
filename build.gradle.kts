@@ -38,6 +38,7 @@ repositories {
 	maven {
 		url = uri("https://repo.viaversion.com/")
 	}
+	maven("https://maven.sneakyrp.com/releases")
 }
 
 dependencies {
@@ -50,6 +51,14 @@ dependencies {
 	compileOnly("io.github.team-sneakymouse:sneakycharactermanager-paper:1.6.0") {
 		exclude(group = "org.jetbrains.kotlin")
 	}
+	compileOnly("io.github.team-sneakymouse:magicspells-core:2026.10.09-17f579714ffe") {
+		isTransitive = false
+	}
+	val cellPhonesCompileJar = file("libs/SneakyCellPhones-2026.10.10-7bb8913a8d5c.jar")
+	check(cellPhonesCompileJar.exists()) {
+		"Missing ${cellPhonesCompileJar.name}. SneakyCellPhones is not on sneakyrp yet; keep the compile-only jar in libs/ until it publishes."
+	}
+	compileOnly(files(cellPhonesCompileJar))
 	compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.18") {
 		isTransitive = false
 	}
@@ -65,6 +74,7 @@ dependencies {
 	compileOnly(files("../SneakyPocketbase/build/libs/SneakyPocketbase-1.0-api.jar"))
 	compileOnly(fileTree("libs") {
 		include("*.jar")
+		exclude("MagicSpells*.jar")
 		exclude("SneakyCharacterManager-*.jar")
 		exclude("*-sources.jar", "*-javadoc.jar")
 	})
