@@ -48,17 +48,16 @@ dependencies {
 	compileOnly("org.apache.logging.log4j:log4j-core:2.24.3")
 	compileOnly("me.clip:placeholderapi:2.11.6")
 	compileOnly("com.viaversion:viaversion-api:5.11.0")
-	compileOnly("io.github.team-sneakymouse:sneakycharactermanager-paper:1.6.0") {
+	compileOnly("io.github.team-sneakymouse:sneakycharactermanager-paper:2026.10.09-84db8a554af1") {
 		exclude(group = "org.jetbrains.kotlin")
+		isTransitive = false
 	}
 	compileOnly("io.github.team-sneakymouse:magicspells-core:2026.10.09-17f579714ffe") {
 		isTransitive = false
 	}
-	val cellPhonesCompileJar = file("libs/SneakyCellPhones-2026.10.10-7bb8913a8d5c.jar")
-	check(cellPhonesCompileJar.exists()) {
-		"Missing ${cellPhonesCompileJar.name}. SneakyCellPhones is not on sneakyrp yet; keep the compile-only jar in libs/ until it publishes."
+	compileOnly("io.github.team-sneakymouse:SneakyCellPhones:2026.10.10-0059a180a603") {
+		isTransitive = false
 	}
-	compileOnly(files(cellPhonesCompileJar))
 	compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.18") {
 		isTransitive = false
 	}
@@ -71,18 +70,12 @@ dependencies {
 	compileOnly("com.sk89q.worldedit:worldedit-core:7.4.0") {
 		isTransitive = false
 	}
-	compileOnly(files("../SneakyPocketbase/build/libs/SneakyPocketbase-1.0-api.jar"))
-	compileOnly(fileTree("libs") {
-		include("*.jar")
-		exclude("MagicSpells*.jar")
-		exclude("SneakyCharacterManager-*.jar")
-		exclude("*-sources.jar", "*-javadoc.jar")
-	})
+	compileOnly("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
 	testImplementation(kotlin("test"))
 	testImplementation("org.mockito:mockito-core:5.23.0")
 	testImplementation("io.papermc.paper:paper-api:26.2.build.117-stable")
 	testImplementation("me.clip:placeholderapi:2.11.6")
-	testRuntimeOnly(files("../SneakyPocketbase/build/libs/SneakyPocketbase-1.0.jar"))
+	testImplementation("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
 }
 
 tasks.processResources {
