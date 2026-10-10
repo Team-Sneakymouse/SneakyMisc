@@ -1,7 +1,24 @@
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
 plugins {
 	kotlin("jvm") version "2.4.10"
 	kotlin("plugin.serialization") version "2.4.10"
+	`maven-publish`
 }
+
+group = "io.github.team-sneakymouse"
+
+version = providers.exec {
+	workingDir(rootDir)
+	commandLine("git", "show", "-s", "--format=%ct:%h", "--abbrev=12", "HEAD")
+}.standardOutput.asText.map { commit ->
+	val (timestamp, hash) = commit.trim().split(":", limit = 2)
+	val date = DateTimeFormatter.ofPattern("yyyy.MM.dd").withZone(ZoneOffset.UTC)
+		.format(Instant.ofEpochSecond(timestamp.toLong()))
+	"$date-$hash"
+}.get()
 
 repositories {
 	maven {
@@ -49,6 +66,7 @@ dependencies {
 	compileOnly(fileTree("libs") {
 		include("*.jar")
 		exclude("SneakyCharacterManager-*.jar")
+		exclude("*-sources.jar", "*-javadoc.jar")
 	})
 	testImplementation(kotlin("test"))
 	testImplementation("org.mockito:mockito-core:5.23.0")
@@ -57,7 +75,15 @@ dependencies {
 	testRuntimeOnly(files("../SneakyPocketbase/build/libs/SneakyPocketbase-1.0.jar"))
 }
 
+tasks.processResources {
+	inputs.property("version", project.version.toString())
+	filesMatching("paper-plugin.yml") {
+		expand("version" to project.version.toString())
+	}
+}
+
 tasks.jar {
+	archiveBaseName.set(rootProject.name)
 	manifest {
 		attributes["Main-Class"] = "com.danidipp.sneakymisc"
 	}
@@ -71,6 +97,7 @@ tasks.test {
 
 configure<JavaPluginExtension> {
 	toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+	withSourcesJar()
 	sourceSets {
 		main {
 			java.srcDir("src/main/kotlin")
@@ -78,6 +105,7 @@ configure<JavaPluginExtension> {
 		}
 	}
 }
+
 val verifyPrivateKotlinRuntime by tasks.registering {
 	dependsOn(tasks.jar)
 	doLast {
@@ -97,4 +125,36 @@ val verifyPrivateKotlinRuntime by tasks.registering {
 
 tasks.check {
 	dependsOn(verifyPrivateKotlinRuntime)
+}
+
+publishing {
+	publications {
+		create<MavenPublication>("maven") {
+			artifactId = rootProject.name
+			from(components["java"])
+			pom {
+				name.set("SneakyMisc")
+				description.set("Paper plugin for Lords of Minecraft mechanics that don't justify having a plugin of their own")
+				url.set("https://github.com/Team-Sneakymouse/SneakyMisc")
+				scm {
+					url.set("https://github.com/Team-Sneakymouse/SneakyMisc")
+					connection.set("scm:git:https://github.com/Team-Sneakymouse/SneakyMisc.git")
+				}
+			}
+		}
+	}
+	repositories {
+		maven {
+			name = "sneakyrp"
+			url = uri("https://maven.sneakyrp.com/releases")
+			credentials(PasswordCredentials::class)
+			authentication {
+				create<org.gradle.authentication.http.BasicAuthentication>("basic")
+			}
+		}
+	}
+}
+
+tasks.withType<PublishToMavenRepository>().configureEach {
+	dependsOn(tasks.check)
 }

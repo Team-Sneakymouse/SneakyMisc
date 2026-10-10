@@ -1,5 +1,5 @@
 name: SneakyMisc
-version: "1.0"
+version: "${version}"
 main: com.danidipp.sneakymisc.SneakyMisc
 bootstrapper: com.danidipp.sneakymisc.SneakyMiscBootstrap
 api-version: "26.2"

@@ -12,6 +12,8 @@
 
 # Package Files #
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
+!libs/SneakyCellPhones-2026.10.10-7bb8913a8d5c.jar
 *.war
 *.nar
 *.ear
