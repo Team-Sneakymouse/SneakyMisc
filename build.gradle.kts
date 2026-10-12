@@ -139,6 +139,7 @@ publishing {
 				name.set("SneakyMisc")
 				description.set("Paper plugin for Lords of Minecraft mechanics that don't justify having a plugin of their own")
 				url.set("https://github.com/Team-Sneakymouse/SneakyMisc")
+				properties.put("sneakyrp.deployment.type", "paper-plugin")
 				scm {
 					url.set("https://github.com/Team-Sneakymouse/SneakyMisc")
 					connection.set("scm:git:https://github.com/Team-Sneakymouse/SneakyMisc.git")
