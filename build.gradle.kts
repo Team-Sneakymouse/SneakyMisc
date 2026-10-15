@@ -52,7 +52,7 @@ dependencies {
 		exclude(group = "org.jetbrains.kotlin")
 		isTransitive = false
 	}
-	compileOnly("io.github.team-sneakymouse:magicspells-core:2026.10.09-17f579714ffe") {
+	compileOnly("io.github.team-sneakymouse:magicspells:2026.10.15-f0a44ae377a3") {
 		isTransitive = false
 	}
 	compileOnly("io.github.team-sneakymouse:SneakyCellPhones:2026.10.10-0059a180a603") {
