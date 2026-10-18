@@ -1,7 +1,8 @@
 package com.danidipp.sneakymisc.elevators
 
-import com.danidipp.sneakymisc.Direction
 import com.danidipp.sneakymisc.SneakyMisc
+import com.sneakyutils.util.Direction
+import com.sneakyutils.util.PoseFacing
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.JoinConfiguration
 import net.kyori.adventure.text.TextComponent
@@ -126,7 +127,7 @@ data class ElevatorFloor(
     private fun getDoorBlock(height: Int, position: DoorBlockPosition): Block {
         val blockLocation = location.clone().add(location.direction.multiply(3.0))
         val offset = when (position) {
-            DoorBlockPosition.LEFT -> when (Direction.getDirection(location)) {
+            DoorBlockPosition.LEFT -> when (PoseFacing.getDirection(location)) {
                 Direction.NORTH -> BlockFace.WEST.direction
                 Direction.EAST -> BlockFace.NORTH.direction
                 Direction.SOUTH -> BlockFace.EAST.direction
@@ -134,7 +135,7 @@ data class ElevatorFloor(
                 else -> Vector(0, 0, 0)
             }
             DoorBlockPosition.CENTER -> Vector(0, 0, 0)
-            DoorBlockPosition.RIGHT -> when (Direction.getDirection(location)) {
+            DoorBlockPosition.RIGHT -> when (PoseFacing.getDirection(location)) {
                 Direction.NORTH -> BlockFace.EAST.direction
                 Direction.EAST -> BlockFace.SOUTH.direction
                 Direction.SOUTH -> BlockFace.WEST.direction
@@ -163,7 +164,7 @@ data class ElevatorFloor(
 
                     val leftData = leftBlock.blockData as MultipleFacing
                     val rightData = rightBlock.blockData as MultipleFacing
-                    val direction = Direction.getDirection(location)
+                    val direction = PoseFacing.getDirection(location)
                     when (direction) {
                         Direction.NORTH, Direction.SOUTH -> {
                             leftData.setFace(BlockFace.WEST, direction == Direction.NORTH)
@@ -193,7 +194,7 @@ data class ElevatorFloor(
 
                     val leftData = leftBlock.blockData as MultipleFacing
                     val rightData = rightBlock.blockData as MultipleFacing
-                    val direction = Direction.getDirection(location)
+                    val direction = PoseFacing.getDirection(location)
                     when (direction) {
                         Direction.NORTH, Direction.SOUTH -> {
                             leftData.setFace(BlockFace.WEST, true)
@@ -227,7 +228,7 @@ data class ElevatorFloor(
                     val rightData = rightBlock.blockData as MultipleFacing
                     val centerData = centerBlock.blockData as MultipleFacing
 
-                    when (Direction.getDirection(location)) {
+                    when (PoseFacing.getDirection(location)) {
                         Direction.NORTH, Direction.SOUTH -> {
                             leftData.setFace(BlockFace.WEST, true)
                             leftData.setFace(BlockFace.EAST, true)
@@ -427,7 +428,7 @@ data class ElevatorFloor(
                 x = floor(x) + 0.5
                 y = floor(y)
                 z = floor(z) + 0.5
-                yaw = when (Direction.getDirection(yaw)) {
+                yaw = when (PoseFacing.getDirection(yaw)) {
                     Direction.NORTH -> 180.0f
                     Direction.EAST -> -90.0f
                     Direction.SOUTH -> 0.0f
@@ -504,7 +505,7 @@ data class ElevatorFloor(
                     Component.text("Y: ", NamedTextColor.GRAY).append(Component.text(location.y, NamedTextColor.YELLOW)),
                     Component.text("Z: ", NamedTextColor.GRAY).append(Component.text(location.z, NamedTextColor.YELLOW))
                 ),
-                Component.text("Facing: ", NamedTextColor.GRAY).append(Component.text(Direction.getDirection(location).name, NamedTextColor.YELLOW)),
+                Component.text("Facing: ", NamedTextColor.GRAY).append(Component.text(PoseFacing.getDirection(location).name, NamedTextColor.YELLOW)),
                 Component.text("Left door: ", NamedTextColor.GRAY).append(Component.text(leftDoor != null, if (leftDoor != null) NamedTextColor.YELLOW else NamedTextColor.RED)),
                 Component.text("Right door: ", NamedTextColor.GRAY).append(Component.text(rightDoor != null, if (rightDoor != null) NamedTextColor.YELLOW else NamedTextColor.RED)),
                 Component.text("Click to teleport", NamedTextColor.AQUA)

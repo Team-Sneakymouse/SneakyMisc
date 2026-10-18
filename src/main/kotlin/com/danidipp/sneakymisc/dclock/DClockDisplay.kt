@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.dclock
 
-import com.danidipp.sneakymisc.Direction
+import com.sneakyutils.util.Direction
+import com.sneakyutils.util.PoseFacing
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.ItemDisplay
@@ -87,7 +88,7 @@ object DClockDisplay {
     }
 
     private fun getCardinalTransform(player: Player): CardinalTransform {
-        return when (Direction.getDirection(player.location)) {
+        return when (PoseFacing.getDirection(player.location)) {
             Direction.NORTH -> CardinalTransform(
                 forward = Vector(0, 0, -1),
                 right = Vector(1, 0, 0),

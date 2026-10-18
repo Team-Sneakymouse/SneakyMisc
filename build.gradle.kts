@@ -71,6 +71,7 @@ dependencies {
 		isTransitive = false
 	}
 	compileOnly("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
+	compileOnly("io.github.team-sneakymouse:sneakyutils:2026.10.18-4b5831b0b997")
 	testImplementation(kotlin("test"))
 	testImplementation("org.mockito:mockito-core:5.23.0")
 	testImplementation("io.papermc.paper:paper-api:26.2.build.117-stable")
