@@ -4,6 +4,8 @@ SneakyMisc reads `plugins/SneakyMisc/worlds.yml` during Paper's datapack discove
 
 On the first start, SneakyMisc writes `plugins/SneakyMisc/worlds.example.yml`. Copy it to `worlds.yml`, then edit the values. The config has no reference to the old datapack files. SneakyMisc generates complete definitions from it. The example uses the directory version of `plots`, including its `terrain-y: 35` density function, plus the supplied `rebeii` and `peak` IDs. The older `plots.zip` in the server backup has different terrain density and surface rules, so switching to this example changes newly generated plots terrain. Restart the server after edits. Confirm the generated pack is enabled with `/datapack list enabled`.
 
+Paper automatically enables `SneakyMisc/worlds` on first discovery and saves the selection. SneakyMisc leaves Paper's forced-enable option off: on Paper 26.2 build 116, that option compares Adventure pack titles before registries are initialized and crashes startup with `CraftRegistry.getMinecraftRegistry()` returning null. If you explicitly disable the pack, enable it again before loading worlds that reference its definitions.
+
 ## Existing worlds
 
 Leave an existing Multiverse world's key out of the `worlds` section. Its saved `world_gen_settings.dat` already specifies the dimension type and generator. Keep the same dimension type, biome, and noise settings IDs in `worlds.yml` so the saved references continue to resolve. Do not enable both the original pack and this generated pack with the same IDs; remove the old pack after validating a copy of the server.

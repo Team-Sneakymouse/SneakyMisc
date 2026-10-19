@@ -62,7 +62,9 @@ public final class WorldDefinitionsBootstrapSupport {
                 }
                 Path packPath = context.getDataDirectory().resolve(PACK_NAME);
                 writePack(packPath, entries);
-                if (event.registrar().discoverPack(packPath, "worlds", options -> options.autoEnableOnServerStart(true)) == null) {
+                // Paper 26.2 compares required pack titles before CraftRegistry is initialized.
+                // Plugin packs are already enabled on first discovery; do not force-enable this pack.
+                if (event.registrar().discoverPack(packPath, "worlds", options -> options.autoEnableOnServerStart(false)) == null) {
                     throw new IOException("Paper did not discover " + packPath);
                 }
                 context.getLogger().info("Registered {} generated world definitions from {}", entries.size(), configPath);
