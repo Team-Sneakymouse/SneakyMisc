@@ -248,12 +248,13 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         }
     }
 
-    fun link(frame: ItemFrame, floor: ElevatorFloor, mode: String) {
-        require(mode in listOf("call", "select")) { "Control mode must be call or select" }
+    fun link(frame: ItemFrame, floor: ElevatorFloor): String {
+        val mode = if (floor.cab.contains(frame.location)) "select" else "call"
         frame.persistentDataContainer.set(CONTROL_FLOOR, PersistentDataType.STRING, floor.id)
         frame.persistentDataContainer.set(CONTROL_MODE, PersistentDataType.STRING, mode)
         frame.isVisible = false
-        if (mode == "select") frame.setItem(ElevatorGUI.getNumber(5994))
+        frame.setItem(if (mode == "select") ElevatorGUI.getNumber(5994) else null)
+        return if (mode == "select") "keypad" else "call control"
     }
 
     fun saveConfig() {
@@ -284,10 +285,10 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         }
         if (!event.player.hasPermission("sneakymisc.elevatorfloor")) return
         val name = event.player.inventory.itemInMainHand.itemMeta?.customName()?.let { PlainTextComponentSerializer.plainText().serialize(it) } ?: return
-        val floor = getFloor(name.removeSuffix(":select")) ?: return
-        link(frame, floor, if (name.endsWith(":select")) "select" else "call")
+        val floor = getFloor(name) ?: return
+        val control = link(frame, floor)
         event.isCancelled = true
-        event.player.sendMessage("Linked elevator control to ${floor.id}")
+        event.player.sendMessage("Linked $control to ${floor.id}")
     }
 
     @EventHandler(ignoreCancelled = true)

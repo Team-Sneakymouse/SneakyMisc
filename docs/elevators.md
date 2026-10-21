@@ -9,11 +9,11 @@ Elevator travel uses a separate, physically isolated transit cab. All cabs have 
 1. Create a named elevator with a style: `/elevator create tower stone`.
 2. Stand at the center of an elevator floor's cab, at feet level, facing its doorway. Run `/elevatorfloor create tower-1`. Repeat for other elevator floors.
 3. Build one or more matching transit cabs away from play areas. Stand at each cab's center facing its doorway, then run `/elevatorcab create stone1 stone` (use a unique name for each).
-4. Look at an item frame within five blocks and run `/elevatorfloor link tower-1 call` for an outside call control, or `/elevatorfloor link tower-1 select` for the inside keypad. Call frames also work with an adjacent vanilla button. Sneak-clicking that button opens the keypad when inside the cab.
+4. Look at an item frame within five blocks and run `/elevatorfloor link tower-1`. A frame inside `tower-1` becomes a keypad; a frame anywhere outside that cab becomes a call control for `tower-1`. Call frames also work with an adjacent vanilla button. Sneak-clicking that button opens the keypad when inside the cab.
 
 Anchors snap to the block center and the nearest cardinal facing. The door is three blocks in front of the anchor. Interior membership uses account feet positions within the five-by-five footprint and four-block height, excluding the doorway/corridor.
 
-Alternatively, right-click an unlinked frame while holding an item named `tower-1` to link a call control, or `tower-1:select` to link a keypad. Linking needs `sneakymisc.elevatorfloor` permission.
+Alternatively, right-click an unlinked frame while holding an item named `tower-1` for either kind of control. The frame's position determines its role when linked, independently of where you stand. Linking needs `sneakymisc.elevatorfloor` permission. The confirmation tells you whether a keypad or call control was linked. If you move a frame or change its role, run the link command again.
 
 Place transit cabs beyond the configured proximity voice range of **both ordinary play areas and every other transit cab**. Putting them underground alone does not guarantee voice isolation. Verify spacing on the live server with the actual voice configuration.
 

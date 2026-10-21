@@ -7,7 +7,12 @@ import kotlin.test.*
 import org.bukkit.*
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
+import org.bukkit.entity.ItemFrame
 import org.bukkit.inventory.Inventory
+import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.ItemMeta
+import org.bukkit.persistence.PersistentDataContainer
+import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import org.bukkit.scheduler.BukkitScheduler
 import org.bukkit.scheduler.BukkitTask
@@ -184,5 +189,59 @@ class ElevatorsModuleTest {
         any<() -> Unit>()
         // A real function avoids passing null through Kotlin's parameter check at this seam.
         return {}
+    }
+
+    @Test fun `frames just inside every cab wall become keypads when linked`() {
+        val f = Fixture()
+        try {
+            val module = ElevatorsModule(f.logger, f.plugin)
+            val floor = ElevatorFloor("tower-1", ElevatorCab.at(Location(f.world, .5, 60.0, .5)), Elevator("tower", "stone"))
+            mockConstruction(ItemStack::class.java) { item, _ ->
+                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java))
+            }.use {
+                val positions = listOf(
+                    Location(f.world, -1.96875, 61.5, .5),
+                    Location(f.world, 2.96875, 61.5, .5),
+                    Location(f.world, .5, 61.5, -1.96875),
+                    Location(f.world, .5, 61.5, 2.96875),
+                )
+                for (position in positions) {
+                    val frame = mock(ItemFrame::class.java)
+                    val pdc = mock(PersistentDataContainer::class.java)
+                    `when`(frame.location).thenReturn(position)
+                    `when`(frame.persistentDataContainer).thenReturn(pdc)
+                    assertEquals("keypad", module.link(frame, floor))
+                    verify(pdc).set(ElevatorsModule.CONTROL_FLOOR, PersistentDataType.STRING, "tower-1")
+                    verify(pdc).set(ElevatorsModule.CONTROL_MODE, PersistentDataType.STRING, "select")
+                    verify(frame).setItem(any(ItemStack::class.java))
+                }
+            }
+        } finally { f.directory.deleteRecursively() }
+    }
+
+    @Test fun `outside frames including other floors and worlds become call controls for the named floor`() {
+        val f = Fixture()
+        try {
+            val module = ElevatorsModule(f.logger, f.plugin)
+            val floor = ElevatorFloor("tower-1", ElevatorCab.at(Location(f.world, .5, 60.0, .5)), Elevator("tower", "stone"))
+            val positions = listOf(
+                Location(f.world, -2.03125, 61.5, .5),
+                Location(f.world, 3.03125, 61.5, .5),
+                Location(f.world, .5, 61.5, -2.03125),
+                Location(f.world, .5, 61.5, 3.03125),
+                Location(f.world, .5, 65.5, .5),
+                Location(mock(World::class.java), .5, 61.5, .5),
+            )
+            for (position in positions) {
+                val frame = mock(ItemFrame::class.java)
+                val pdc = mock(PersistentDataContainer::class.java)
+                `when`(frame.location).thenReturn(position)
+                `when`(frame.persistentDataContainer).thenReturn(pdc)
+                assertEquals("call control", module.link(frame, floor))
+                verify(pdc).set(ElevatorsModule.CONTROL_FLOOR, PersistentDataType.STRING, "tower-1")
+                verify(pdc).set(ElevatorsModule.CONTROL_MODE, PersistentDataType.STRING, "call")
+                verify(frame).setItem(null)
+            }
+        } finally { f.directory.deleteRecursively() }
     }
 }

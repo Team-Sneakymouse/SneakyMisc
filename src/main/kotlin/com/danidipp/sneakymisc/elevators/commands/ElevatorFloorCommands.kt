@@ -33,15 +33,15 @@ internal class ElevatorFloorCommands(private val module: ElevatorsModule, privat
             }))
         }
         root.then(Commands.literal("link").then(Commands.argument("floor", StringArgumentType.word()).suggests(utils.floorSuggestions)
-            .then(Commands.argument("mode", StringArgumentType.word()).suggests(utils.suggestionProvider { listOf("call", "select") }).executes { context ->
+            .executes { context ->
                 val player = context.requirePlayer("Only players can link controls") ?: return@executes 0
                 utils.attempt(context) {
                     val floor = requireNotNull(module.getFloor(context.stringArg("floor"))) { "Elevator floor not found" }
                     val frame = requireNotNull(player.getTargetEntity(5) as? ItemFrame) { "Look at an item frame within five blocks" }
-                    module.link(frame, floor, context.stringArg("mode"))
-                    "Linked ${context.stringArg("mode")} control to ${floor.id}"
+                    val control = module.link(frame, floor)
+                    "Linked $control to ${floor.id}"
                 }
-            })))
+            }))
         return root.build()
     }
 }
