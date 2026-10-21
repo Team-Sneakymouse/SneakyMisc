@@ -9,18 +9,14 @@ import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.ItemFrame
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
-import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.server.PluginDisableEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
-import org.bukkit.scheduler.BukkitTask
-import java.util.UUID
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import java.io.File
 import java.util.logging.Level
@@ -40,8 +36,8 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     private val transitCabs = linkedMapOf<String, ElevatorTransitCab>()
     internal val guis = mutableSetOf<ElevatorGUI>()
     private val chunkUsers = mutableMapOf<Chunk, Int>()
+    private val particles = mutableMapOf<ElevatorTransitCab, ElevatorParticles>()
     private val leases = mutableMapOf<ElevatorTransitCab, MutableList<Chunk>>()
-    private val pendingMusic = mutableMapOf<UUID, BukkitTask>()
     private var stopped = false
     private val utils = ElevatorCommandUtils(this)
     override val commands = listOf(
@@ -65,8 +61,11 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             origin.ensureDoors()
             destination.ensureDoors()
             cab.initialize()
+            val movementY = -destination.location.y.compareTo(origin.location.y).toDouble()
+            particles[cab] = ElevatorParticles(plugin, cab.cab, movementY)
         }
         override fun release(origin: ElevatorFloor, destination: ElevatorFloor, cab: ElevatorTransitCab) {
+            particles.remove(cab)?.stop()
             for (chunk in leases.remove(cab).orEmpty()) {
                 val remaining = (chunkUsers[chunk] ?: 1) - 1
                 if (remaining == 0) {
@@ -89,14 +88,17 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         }
         override fun openDoors(floor: ElevatorFloor) = floor.open()
         override fun closeDoors(floor: ElevatorFloor, closed: () -> Unit) = floor.close(closed)
-        override fun board(origin: ElevatorFloor, cab: ElevatorTransitCab): Int =
-            transfer(origin.cab, cab.cab, true)
+        override fun board(origin: ElevatorFloor, cab: ElevatorTransitCab): Int {
+            val moved = transfer(origin.cab, cab.cab, true)
+            if (moved > 0) particles[cab]?.start()
+            return moved
+        }
         override fun afterTravel(arrive: () -> Unit): ElevatorTask {
             val task = Bukkit.getScheduler().runTaskLater(plugin, Runnable { arrive() }, SONG_DURATION + 20)
             return ElevatorTask { task.cancel() }
         }
         override fun arrive(cab: ElevatorTransitCab, destination: ElevatorFloor) {
-            transfer(cab.cab, destination.cab, false)
+            if (transfer(cab.cab, destination.cab, false) > 0) ElevatorParticles.arrival(destination.cab)
         }
         override fun failed(origin: ElevatorFloor, failure: Exception) {
             logger.log(Level.SEVERE, "Elevator travel from ${origin.id} failed", failure)
@@ -143,28 +145,13 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             if (!from.contains(player.location)) continue
             if (player.teleport(from.destination(player.location, to))) {
                 moved++
-                if (music) startMusic(player, to)
-                else player.stopSound("lom:elevator", SoundCategory.MASTER)
+                if (music) player.playSound(player, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
             } else {
                 logger.warning("Elevator teleport rejected for ${player.uniqueId}")
                 player.sendMessage("Elevator transfer failed. Use /spawn if you are stuck.")
             }
         }
         return moved
-    }
-
-    private fun startMusic(player: Player, cab: ElevatorCab) {
-        pendingMusic.remove(player.uniqueId)?.cancel()
-        lateinit var task: BukkitTask
-        // Give the client time to apply the teleport before starting a positional sound.
-        task = Bukkit.getScheduler().runTaskLater(plugin, Runnable {
-            if (pendingMusic[player.uniqueId] !== task) return@Runnable
-            pendingMusic.remove(player.uniqueId)
-            if (!stopped && player.isOnline && cab.contains(player.location)) {
-                player.playSound(player.location, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
-            }
-        }, 2L)
-        pendingMusic[player.uniqueId] = task
     }
 
     private fun chunks(cab: ElevatorCab): List<Chunk> {
@@ -355,20 +342,10 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         } else if (!travel.isDeparting(floor) && !stopped) player.openInventory(ElevatorGUI(this, floor).inventory)
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    fun onTeleport(event: PlayerTeleportEvent) {
-        if (transitCabs.values.any { it.cab.contains(event.from) && !it.cab.contains(event.to) }) {
-            pendingMusic.remove(event.player.uniqueId)?.cancel()
-            event.player.stopSound("lom:elevator", SoundCategory.MASTER)
-        }
-    }
-
     @EventHandler
     fun onDisable(event: PluginDisableEvent) {
         if (event.plugin !== plugin) return
         stopped = true
-        pendingMusic.values.forEach { it.cancel() }
-        pendingMusic.clear()
         travel.shutdown()
         guis.toList().forEach { it.invalidate(); it.inventory.close() }
         getElevators().flatMap { it.getFloors() }.forEach { it.stop() }

@@ -22,7 +22,8 @@ Place transit cabs beyond the configured proximity voice range of **both ordinar
 - Call controls open or reopen doors. Reopening while a departure closes cancels that departure.
 - Select tens first, then ones: `0`, `5` selects elevator floor 5. The second digit evaluates automatically. B and G select immediately; Clear resets partial input.
 - The first valid destination selection starts departure for everyone inside when doors finish closing.
-- Elevator travel keeps the existing music and timing. Occupants who teleport away stay away; accounts summoned into the transit cab arrive with its current occupants and hear no music.
+- During elevator travel, purple sparkles flow along the transit cab walls opposite the direction between departure and destination heights. Same-height travel uses stationary sparkles. A brief stationary purple shimmer fills the destination cab when accounts arrive.
+- Elevator music starts immediately, follows each boarding account, and finishes naturally even after arrival or teleporting away. Elevator travel keeps the existing timing. Occupants who teleport away stay away; accounts summoned into the transit cab arrive with its current occupants and hear no music.
 - Arrivals into an occupied/open elevator floor happen immediately. They cancel any departure still closing there and interrupt keypad users inside with half a heart of damage and an amethyst sparkle sound. Damage is allowed to be lethal.
 - Compatible transit cabs are shared by every elevator with the same style. If all are reserved or physically occupied, selection shows an at-capacity message; calls still work. A missing style pool shows a setup error instead.
 - An empty transit cab remains reserved until its original arrival time. With nobody arriving, it does not interrupt the destination.
@@ -62,4 +63,4 @@ After rebuilding the physical elevators, verify the following with multiple acco
 - Call at different elevator floors during active elevator travel, and exhaust the matching style's transit-cab pool.
 - Reopen doors during departure; then arrive at another elevator floor while its doors are closing or someone is selecting a destination.
 - Teleport out and summon another account in during elevator travel. Check preserved offsets/facing at rotated elevator floors and transit cabs.
-- Check door movement, collision barriers, keypad models, music timing, and actual voice isolation. These require the server and resource pack and cannot be proven by JVM tests.
+- Check upward/downward transit sparkles, the arrival shimmer, door movement, collision barriers, keypad models, music timing, and actual voice isolation. These require the server and resource pack and cannot be proven by JVM tests.
