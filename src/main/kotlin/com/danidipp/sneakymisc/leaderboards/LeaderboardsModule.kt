@@ -7,6 +7,7 @@ import com.danidipp.sneakymisc.leaderboards.commands.LeaderboardDebugCommand
 import com.nisovin.magicspells.MagicSpells
 import com.nisovin.magicspells.events.MagicSpellsLoadedEvent
 import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
+import me.clip.placeholderapi.PlaceholderAPI
 import net.sneakycharactermanager.paper.handlers.character.Character
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
@@ -20,7 +21,7 @@ import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
 import com.danidipp.sneakypocketbase.PocketbaseProvider
 
 class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
-    companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells") }
+    companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells", "PlaceholderAPI") }
     val leaderboards = mutableMapOf<String, Leaderboard>()
     val HALF_MINUTE = 20L * 30L
     
@@ -102,7 +103,7 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
                         LeaderboardScoreSample(
                             accountId = player.uniqueId,
                             characterId = UUID.fromString(character.characterUUID),
-                            characterName = character.name,
+                            characterName = PlaceholderAPI.setPlaceholders(player, "%sneakycharacters_character_name_noformat%"),
                             value = value,
                             leaderboardDate = playerDateStr,
                         )
