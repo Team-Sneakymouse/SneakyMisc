@@ -102,7 +102,7 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
                         LeaderboardScoreSample(
                             accountId = player.uniqueId,
                             characterId = UUID.fromString(character.characterUUID),
-                            characterName = character.name,
+                            characterName = character.nameUnformatted,
                             value = value,
                             leaderboardDate = playerDateStr,
                         )
