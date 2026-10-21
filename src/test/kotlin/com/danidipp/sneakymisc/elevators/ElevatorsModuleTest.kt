@@ -1,0 +1,136 @@
+package com.danidipp.sneakymisc.elevators
+
+import java.nio.file.Files
+import java.util.UUID
+import java.util.logging.Logger
+import kotlin.test.*
+import org.bukkit.*
+import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.entity.Player
+import org.bukkit.inventory.Inventory
+import org.bukkit.plugin.Plugin
+import org.bukkit.scheduler.BukkitScheduler
+import org.bukkit.scheduler.BukkitTask
+import org.mockito.Mockito.*
+
+class ElevatorsModuleTest {
+    private class Fixture {
+        val directory = Files.createTempDirectory("elevator-test").toFile()
+        val plugin = mock(Plugin::class.java)
+        val world = mock(World::class.java)
+        val scheduler = mock(BukkitScheduler::class.java)
+        val callbacks = mutableListOf<Runnable>()
+        val accounts = mutableListOf<Player>()
+        val logger = Logger.getLogger("elevators-test")
+        init {
+            `when`(plugin.dataFolder).thenReturn(directory)
+            `when`(world.name).thenReturn("world")
+            `when`(world.key()).thenReturn(net.kyori.adventure.key.Key.key("minecraft:overworld"))
+            `when`(world.minHeight).thenReturn(-64)
+            `when`(world.maxHeight).thenReturn(320)
+            `when`(world.players).thenAnswer { accounts.toList() }
+            val chunk = mock(Chunk::class.java)
+            `when`(world.getChunkAt(anyInt(), anyInt())).thenReturn(chunk)
+            `when`(scheduler.runTaskLater(eq(plugin), any(Runnable::class.java), anyLong())).thenAnswer {
+                callbacks.add(it.getArgument(1)); mock(BukkitTask::class.java)
+            }
+        }
+        fun player(position: Location): Player {
+            val player = mock(Player::class.java)
+            var current = position
+            `when`(player.uniqueId).thenReturn(UUID.randomUUID())
+            `when`(player.location).thenAnswer { current.clone() }
+            `when`(player.teleport(any(Location::class.java))).thenAnswer { current = it.getArgument(0); true }
+            accounts.add(player)
+            return player
+        }
+        fun floor(module: ElevatorsModule, label: String, x: Double): ElevatorFloor {
+            val floor = mock(ElevatorFloor::class.java)
+            val elevator = module.getElevator("tower")!!
+            val cab = ElevatorCab.at(Location(world, x, 60.0, .5))
+            `when`(floor.id).thenReturn("tower-$label")
+            `when`(floor.elevator).thenReturn(elevator)
+            `when`(floor.cab).thenReturn(cab)
+            `when`(floor.location).thenReturn(cab.location)
+            elevator.addFloor(floor)
+            return floor
+        }
+    }
+
+    @Test fun `new setup persists style tags and locations but no travel or recovery state`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld("world") }.thenReturn(f.world)
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5, 90f, 0f))
+                val config = YamlConfiguration.loadConfiguration(f.directory.resolve("elevators.yml"))
+                assertEquals(setOf("version", "elevators", "transit-cabs"), config.getKeys(false))
+                assertEquals("stone", config.getString("elevators.tower.style"))
+                val loaded = ElevatorsModule(f.logger, f.plugin)
+                assertEquals("stone", loaded.getElevator("tower")!!.style)
+                val cab = loaded.getTransitCabs().single()
+                assertEquals("stone", cab.style)
+                assertEquals(100.5, cab.cab.location.x)
+                assertEquals(90f, cab.cab.location.yaw)
+            }
+        } finally { f.directory.deleteRecursively() }
+    }
+
+    @Test fun `arrival interrupts only GUI users inside destination before moving current transit occupants`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                val origin = f.floor(module, "1", .5)
+                val destination = f.floor(module, "2", 20.5)
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                val incoming = f.player(origin.location.clone())
+                val selecting = f.player(destination.location.clone())
+                val outside = f.player(Location(f.world, 50.5, 60.0, .5))
+                val bystander = f.player(destination.location.clone().add(1.0, 0.0, 0.0))
+                var closed: (() -> Unit)? = null
+                doAnswer { call -> closed = call.getArgument(0); ElevatorTask {} }.`when`(origin).close(callbackMatcher())
+                fun gui(viewer: Player): ElevatorGUI {
+                    val gui = mock(ElevatorGUI::class.java)
+                    val inventory = mock(Inventory::class.java)
+                    `when`(gui.floor).thenReturn(destination)
+                    `when`(gui.inventory).thenReturn(inventory)
+                    `when`(inventory.viewers).thenReturn(listOf(viewer))
+                    module.guis.add(gui)
+                    return gui
+                }
+                val selectedGui = gui(selecting)
+                val outsideGui = gui(outside)
+                assertEquals(ElevatorDepartureResult.STARTED, module.travel.start(origin, destination))
+                closed!!()
+                assertEquals(100.5, incoming.location.x)
+                // A summoned account is discovered at arrival without registration or music.
+                val summoned = f.player(incoming.location.clone().add(1.0, 0.0, 0.0))
+                f.callbacks.single().run()
+                assertEquals(20.5, incoming.location.x)
+                assertEquals(21.5, summoned.location.x)
+                verify(selectedGui).invalidate()
+                verify(outsideGui).invalidate()
+                verify(selecting).closeInventory()
+                verify(selecting).damage(1.0)
+                verify(selecting).playSound(selecting, "minecraft:block.amethyst_block.chime", SoundCategory.MASTER, 1f, 1.5f)
+                verify(outside, never()).damage(anyDouble())
+                verify(bystander, never()).damage(anyDouble())
+                verify(summoned, never()).playSound(summoned, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+                verify(incoming).playSound(incoming, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+                verify(destination).open()
+            }
+        } finally { f.directory.deleteRecursively() }
+    }
+
+    private fun callbackMatcher(): () -> Unit {
+        any<() -> Unit>()
+        // A real function avoids passing null through Kotlin's parameter check at this seam.
+        return {}
+    }
+}

@@ -4,122 +4,149 @@ import com.danidipp.sneakymisc.SneakyMisc
 import com.sneakyutils.util.Direction
 import com.sneakyutils.util.PoseFacing
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.JoinConfiguration
 import net.kyori.adventure.text.TextComponent
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.*
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
 import org.bukkit.block.data.MultipleFacing
-import org.bukkit.configuration.serialization.ConfigurationSerializable
 import org.bukkit.entity.BlockDisplay
 import org.bukkit.entity.Display
-import org.bukkit.entity.ItemFrame
-import org.bukkit.entity.Player
-import org.bukkit.event.EventHandler
-import org.bukkit.event.Listener
-import org.bukkit.event.player.PlayerInteractEntityEvent
-import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.event.world.ChunkLoadEvent
-import org.bukkit.event.world.ChunkUnloadEvent
-import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.scheduler.BukkitTask
 import org.bukkit.util.Transformation
 import org.bukkit.util.Vector
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
-import kotlin.math.floor
 
-data class ElevatorFloor(
-    val id: String,
-    var location: Location,
-    var isOpen: Boolean,
-    val elevator: Elevator
-): ConfigurationSerializable {
+class ElevatorFloor(val id: String, val cab: ElevatorCab, val elevator: Elevator) {
+    val location: Location get() = cab.location
     private var leftDoor: BlockDisplay? = null
     private var rightDoor: BlockDisplay? = null
-    private var closingTask: BukkitTask? = null
+    private val tasks = mutableSetOf<BukkitTask>()
+    private var revision = 0L
+    private var state = DoorState.CLOSED
+    val isOpen: Boolean get() = state == DoorState.OPEN || state == DoorState.OPENING
 
-    fun getPlayers(): List<Player> {
-        return location.world.getNearbyEntities(location, 3.0, 3.0, 3.0)
-            .filterIsInstance<Player>()
+    private enum class DoorState { CLOSED, OPENING, OPEN, CLOSING }
+
+    private fun cancelTasks() {
+        revision++
+        tasks.forEach { it.cancel() }
+        tasks.clear()
     }
 
-    private fun scheduleClose() {
-        closingTask?.cancel()
-        closingTask = Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-            close()
-        }, 20 * 10)
+    private fun later(delay: Long, action: () -> Unit) {
+        val expected = revision
+        lateinit var task: BukkitTask
+        task = Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
+            tasks.remove(task)
+            if (revision == expected) action()
+        }, delay)
+        tasks.add(task)
     }
 
-    fun open() {
-        if (isOpen) {
+    internal fun open() {
+        if (state == DoorState.OPENING) return
+        val alreadyOpen = state == DoorState.OPEN
+        cancelTasks()
+        if (alreadyOpen) {
             scheduleClose()
             return
         }
+        ensureDoors()
+        state = DoorState.OPENING
         val doorLocation = location.clone().add(location.direction.multiply(3.0))
         doorLocation.world.playSound(doorLocation, "lom:elevatorping", SoundCategory.MASTER, 1f, 1f)
-        val openDelay = 20L
-
-        Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-            isOpen = true
-            ElevatorsModule.instance.saveConfig()
-            val leftDoor = leftDoor
-            val rightDoor = rightDoor
-
-            if (leftDoor != null) {
-                leftDoor.interpolationDelay = -1
-                leftDoor.transformation = getDoorTransformation(leftDoor, DoorBlockPosition.LEFT, Openness.OPEN)
-            }
-            if (rightDoor != null) {
-                rightDoor.interpolationDelay = -1
-                rightDoor.transformation = getDoorTransformation(rightDoor, DoorBlockPosition.RIGHT, Openness.OPEN)
-            }
-
+        later(20) {
+            animate(Openness.OPEN)
             setOpenness(Openness.HALF)
-            Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-                setOpenness(Openness.BARELY)
-            }, 1 * DOOR_DURATION.toLong()/3L - 2)
-            Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-                setOpenness(Openness.OPEN)
-            }, 2 * DOOR_DURATION.toLong()/3L - 2)
-
+            later(DOOR_DURATION / 3L - 2) { setOpenness(Openness.BARELY) }
+            later(2 * DOOR_DURATION / 3L - 2) { setOpenness(Openness.OPEN) }
+            later(DOOR_DURATION.toLong()) {
+                state = DoorState.OPEN
+            }
             scheduleClose()
-        }, openDelay)
+        }
     }
 
-    fun close() {
-        if (closingTask?.isCancelled == false) {
-            closingTask?.cancel()
-            closingTask = null
-        }
-        isOpen = false
-        ElevatorsModule.instance.saveConfig()
-        val leftDoor = leftDoor
-        val rightDoor = rightDoor
+    private fun scheduleClose() { later(200) { close() } }
 
-        if (leftDoor != null) {
-            leftDoor.interpolationDelay = -1
-            leftDoor.transformation = getDoorTransformation(leftDoor, DoorBlockPosition.LEFT, Openness.CLOSED)
+    internal fun close(closed: () -> Unit = {}): ElevatorTask {
+        cancelTasks()
+        ensureDoors()
+        val expected = revision
+        if (state == DoorState.CLOSED) {
+            later(1, closed)
+        } else {
+            state = DoorState.CLOSING
+            animate(Openness.CLOSED)
+            later(DOOR_DURATION / 3L + 2) { setOpenness(Openness.BARELY) }
+            later(2 * DOOR_DURATION / 3L + 2) { setOpenness(Openness.HALF) }
+            later(DOOR_DURATION.toLong()) {
+                setOpenness(Openness.CLOSED)
+                state = DoorState.CLOSED
+                closed()
+            }
         }
-        if (rightDoor != null) {
-            rightDoor.interpolationDelay = -1
-            rightDoor.transformation = getDoorTransformation(rightDoor, DoorBlockPosition.RIGHT, Openness.CLOSED)
-        }
-
-        Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-            setOpenness(Openness.BARELY)
-        }, 1 * DOOR_DURATION.toLong()/3L + 2)
-        Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-            setOpenness(Openness.HALF)
-        }, 2 * DOOR_DURATION.toLong()/3L + 2)
-        Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-            setOpenness(Openness.CLOSED)
-        }, DOOR_DURATION.toLong())
+        return ElevatorTask { if (revision == expected) cancelTasks() }
     }
+
+    private fun animate(openness: Openness) {
+        listOf(leftDoor to DoorBlockPosition.LEFT, rightDoor to DoorBlockPosition.RIGHT).forEach { (door, side) ->
+            door?.let {
+                it.interpolationDelay = -1
+                it.transformation = getDoorTransformation(it, side, openness)
+            }
+        }
+    }
+
+    internal fun ensureDoors() {
+        val doorLocation = location.clone().add(location.direction.multiply(3.0))
+        val entities = doorLocation.chunk.entities.filterIsInstance<BlockDisplay>()
+        fun findOrSpawn(side: DoorBlockPosition): BlockDisplay {
+            val key = "$id:${side.name.lowercase()}"
+            val matching = entities.filter { it.persistentDataContainer.get(ELEVATOR_KEY, PersistentDataType.STRING) == key }
+            matching.drop(1).forEach { it.remove() }
+            val door = matching.firstOrNull() ?: doorLocation.world.spawn(doorLocation, BlockDisplay::class.java) {
+                it.block = Material.POLISHED_BASALT.createBlockData()
+                it.brightness = Display.Brightness(15, 15)
+                it.interpolationDuration = DOOR_DURATION
+                it.transformation = Transformation(Vector3f(), AxisAngle4f(), Vector3f(1.5f, DOOR_HEIGHT, 0.5f), AxisAngle4f())
+                it.persistentDataContainer.set(ELEVATOR_KEY, PersistentDataType.STRING, key)
+            }
+            door.transformation = getDoorTransformation(door, side, if (isOpen) Openness.OPEN else Openness.CLOSED)
+            return door
+        }
+        if (leftDoor?.isValid != true) leftDoor = findOrSpawn(DoorBlockPosition.LEFT)
+        if (rightDoor?.isValid != true) rightDoor = findOrSpawn(DoorBlockPosition.RIGHT)
+    }
+
+    internal fun initialize() {
+        state = DoorState.CLOSED
+        ensureDoors()
+        setOpenness(Openness.CLOSED)
+    }
+
+    internal fun stop() {
+        cancelTasks()
+        state = DoorState.CLOSED
+        animate(Openness.CLOSED)
+        setOpenness(Openness.CLOSED)
+    }
+
+    internal fun cleanup() {
+        cancelTasks()
+        ensureDoors()
+        setOpenness(Openness.OPEN)
+        leftDoor?.remove()
+        rightDoor?.remove()
+    }
+
+    fun toComponent(): TextComponent = Component.text(id, NamedTextColor.AQUA)
+        .hoverEvent(Component.text("${location.world.name}: ${location.blockX}, ${location.blockY}, ${location.blockZ}\nClick to teleport"))
+        .clickEvent(ClickEvent.runCommand("/minecraft:tp @s ${location.x} ${location.y} ${location.z} ${location.yaw} ${location.pitch}"))
 
     private enum class DoorBlockPosition {
         LEFT, CENTER, RIGHT
@@ -288,242 +315,11 @@ data class ElevatorFloor(
     }
 
 
+    private enum class Openness { OPEN, BARELY, HALF, CLOSED }
+
     companion object {
-        private const val DOOR_HEIGHT = 4.0f
+        private const val DOOR_HEIGHT = 4f
         const val DOOR_DURATION = 40
-        val ELEVATOR_KEY = NamespacedKey(SneakyMisc.getInstance(), "elevator_door")
-
-        fun listener(elevators: ElevatorsModule) = object : Listener {
-            @EventHandler
-            fun onEntityLoad(event: ChunkLoadEvent) {
-                val entities = event.chunk.entities
-                for (entity in entities) {
-                    if (entity is BlockDisplay && entity.persistentDataContainer.has(ELEVATOR_KEY, PersistentDataType.STRING)) {
-                        val elevatorData = entity.persistentDataContainer.get(ELEVATOR_KEY, PersistentDataType.STRING)!!
-
-                        if (elevatorData.split(":").size != 2) {
-                            SneakyMisc.getInstance().logger.severe("Failed to parse elevator data: $elevatorData")
-                            entity.remove()
-                            return
-                        }
-                        val (floorId, doorType) = elevatorData.split(":")
-
-                        val elevatorFloor = elevators.getFloor(floorId)
-                        if (elevatorFloor == null) {
-                            SneakyMisc.getInstance().logger.severe("Failed to find elevator floor: $floorId")
-                            entity.remove()
-                            continue
-                        }
-
-                        when (doorType) {
-                            "left" -> {
-                                elevatorFloor.leftDoor = entity
-                                entity.transformation = elevatorFloor.getDoorTransformation(entity, DoorBlockPosition.LEFT, if (elevatorFloor.isOpen) Openness.OPEN else Openness.CLOSED)
-                            }
-                            "right" -> {
-                                elevatorFloor.rightDoor = entity
-                                entity.transformation = elevatorFloor.getDoorTransformation(entity, DoorBlockPosition.RIGHT, if (elevatorFloor.isOpen) Openness.OPEN else Openness.CLOSED)
-                            }
-                            else -> {
-                                SneakyMisc.getInstance().logger.severe("Failed to parse door type: $doorType")
-                                entity.remove()
-                            }
-                        }
-                    }
-                }
-            }
-            @EventHandler
-            fun onEntityUnload(event: ChunkUnloadEvent) {
-                val entities = event.chunk.entities
-                for (entity in entities) {
-                    if (entity is BlockDisplay && entity.persistentDataContainer.has(ELEVATOR_KEY, PersistentDataType.STRING)) {
-                        val elevatorData = entity.persistentDataContainer.get(ELEVATOR_KEY, PersistentDataType.STRING)!!
-
-                        if (elevatorData.split(":").size != 2) {
-                            SneakyMisc.getInstance().logger.severe("Failed to parse elevator data: $elevatorData")
-                            entity.remove()
-                            return
-                        }
-                        val (floorId, doorType) = elevatorData.split(":")
-
-                        val elevatorFloor = elevators.getFloor(floorId)
-                        if (elevatorFloor == null) {
-                            entity.remove()
-                            continue
-                        }
-
-                        when (doorType) {
-                            "left" -> elevatorFloor.leftDoor = null
-                            "right" -> elevatorFloor.rightDoor = null
-                            else -> {
-                                SneakyMisc.getInstance().logger.severe("Failed to parse door type: $doorType")
-                                entity.remove()
-                            }
-                        }
-                    }
-                }
-            }
-
-            @EventHandler
-            fun onEntityInteract(event: PlayerInteractEntityEvent) {
-                if (event.rightClicked !is ItemFrame) return
-                val itemFrame = event.rightClicked as ItemFrame
-                if (itemFrame.persistentDataContainer.has(ELEVATOR_KEY, PersistentDataType.STRING)){
-                    event.isCancelled = true
-                    val data = itemFrame.persistentDataContainer.get(ELEVATOR_KEY, PersistentDataType.STRING) ?: return
-                    val elevator = elevators.getElevator(data) ?: return
-                    event.player.openInventory(ElevatorGUI(elevator).inventory)
-                    return
-                }
-                if (event.hand != EquipmentSlot.HAND) return
-                if (!event.player.hasPermission("sneakymisc.elevatorfloor")) return
-                val item = event.player.inventory.itemInMainHand
-                val customName = item.itemMeta?.customName() ?: return
-                val itemName = PlainTextComponentSerializer.plainText().serialize(customName)
-                if (itemName.contains('-')) {
-                    val elevatorFloor = elevators.getFloor(itemName) ?: return
-                    itemFrame.persistentDataContainer.set(ELEVATOR_KEY, PersistentDataType.STRING, elevatorFloor.id)
-                    event.player.sendMessage(Component.text("ElevatorFloor ").append(elevatorFloor.toComponent()).append(Component.text(" linked to item frame")))
-                    // place item?
-                    itemFrame.isVisible = false
-                } else {
-                    val elevator = elevators.getElevator(itemName) ?: return
-                    itemFrame.persistentDataContainer.set(ELEVATOR_KEY, PersistentDataType.STRING, elevator.name)
-                    event.player.sendMessage(Component.text("Elevator ").append(Component.text(elevator.name)).append(Component.text(" linked to item frame")))
-                    itemFrame.setItem(ElevatorGUI.getNumber(5994))
-                    itemFrame.isVisible = false
-                }
-
-                event.isCancelled = true
-
-            }
-
-            @EventHandler
-            fun onButtonClick(event: PlayerInteractEvent) {
-                if (event.hand != EquipmentSlot.HAND) return
-                val clickedBlock = event.clickedBlock ?: return
-                if (!Tag.BUTTONS.isTagged(clickedBlock.type)) return
-                val itemFrame = clickedBlock.world.getNearbyEntities(clickedBlock.location, 1.0, 1.0, 1.0)
-                    .filterIsInstance<ItemFrame>()
-                    .firstOrNull { it.persistentDataContainer.has(ELEVATOR_KEY, PersistentDataType.STRING) } ?: return
-                val elevatorFloorId = itemFrame.persistentDataContainer.get(ELEVATOR_KEY, PersistentDataType.STRING) ?: return
-                val elevator = elevators.getElevator(elevatorFloorId.split("-").first()) ?: return
-                if (elevator.inTransit) {
-                    clickedBlock.world.playSound(clickedBlock.location, "lom:computer.error", SoundCategory.MASTER, 1f, 1f)
-                    return
-                }
-
-                if(event.player.isSneaking) {
-                    event.player.openInventory(ElevatorGUI(elevator).inventory)
-                    return
-                }
-
-                val floor = elevators.getFloor(elevatorFloorId) ?: return
-                elevator.callTo(floor)
-            }
-        }
-
-        fun create(floorId: String, location: Location, elevator: Elevator): ElevatorFloor {
-            location.apply {
-                x = floor(x) + 0.5
-                y = floor(y)
-                z = floor(z) + 0.5
-                yaw = when (PoseFacing.getDirection(yaw)) {
-                    Direction.NORTH -> 180.0f
-                    Direction.EAST -> -90.0f
-                    Direction.SOUTH -> 0.0f
-                    Direction.WEST -> 90.0f
-                    else -> 45.0f
-                }
-                pitch = 0.0f
-            }
-            val elevatorFloor = ElevatorFloor(floorId, location, false, elevator)
-
-            // Spawn doors
-            val doorLocation = location.clone().add(location.direction.multiply(3.0))
-
-            val rotation = AxisAngle4f(0.0f, 0.0f, 0.0f, 1.0f)
-            val scale = Vector3f(1.5f, DOOR_HEIGHT, 0.5f)
-            val leftDoorTranslation = Vector3f(-1.5f, 0.0f, -0.25f)
-            val rightDoorTranslation = Vector3f(0.0f, 0.0f, -0.25f)
-
-
-            elevatorFloor.leftDoor = location.world.spawn(doorLocation, BlockDisplay::class.java) {
-                it.block = Material.POLISHED_BASALT.createBlockData()
-                it.brightness = Display.Brightness(15, 15)
-                it.interpolationDuration = DOOR_DURATION
-                it.transformation = Transformation(
-                    /* translation    */ leftDoorTranslation.clone() as Vector3f,
-                    /* left rotation  */ rotation.clone() as AxisAngle4f,
-                    /* scale          */ scale.clone() as Vector3f,
-                    /* right rotation */ rotation.clone() as AxisAngle4f
-                )
-                it.persistentDataContainer.set(ELEVATOR_KEY, PersistentDataType.STRING, "$floorId:left")
-            }
-            elevatorFloor.rightDoor = location.world.spawn(doorLocation, BlockDisplay::class.java) {
-                it.block = Material.POLISHED_BASALT.createBlockData()
-                it.brightness = Display.Brightness(15, 15)
-                it.interpolationDuration = DOOR_DURATION
-                it.transformation = Transformation(
-                    /* translation */ rightDoorTranslation.clone() as Vector3f,
-                    /* left rotation  */ rotation.clone() as AxisAngle4f,
-                    /* scale          */ scale.clone() as Vector3f,
-                    /* right rotation */ rotation.clone() as AxisAngle4f
-                )
-                it.persistentDataContainer.set(ELEVATOR_KEY, PersistentDataType.STRING, "$floorId:right")
-            }
-
-            elevatorFloor.setOpenness(Openness.CLOSED)
-            return elevatorFloor
-        }
-
-        fun deserialize(data: Map<String, Any>, elevator: Elevator): ElevatorFloor {
-            val id = data["id"] as String? ?: throw IllegalArgumentException("Failed to parse ElevatorFloor config: Missing id")
-            val location = data["location"] as Location? ?: throw IllegalArgumentException("Failed to parse ElevatorFloor config: Missing location")
-            val isOpen = data["isOpen"] as Boolean? ?: false
-            val elevatorFloor = ElevatorFloor(id, location, isOpen, elevator)
-            elevatorFloor.setOpenness(if (isOpen) Openness.OPEN else Openness.CLOSED)
-            return elevatorFloor
-        }
+        val ELEVATOR_KEY = NamespacedKey("sneakymisc", "elevator_door")
     }
-
-    override fun serialize(): MutableMap<String, Any> {
-        return mutableMapOf(
-            "id" to id,
-            "location" to location,
-            "isOpen" to isOpen
-        )
-    }
-
-    fun toComponent(): TextComponent {
-        return Component.text(id, NamedTextColor.AQUA).hoverEvent(
-            Component.join(JoinConfiguration.newlines(),
-                Component.text(id).append(Component.text(if (isOpen) " open" else " closed", if (isOpen) NamedTextColor.GREEN else NamedTextColor.RED)),
-                Component.text("World: ", NamedTextColor.GRAY).append(Component.text(location.world.name, NamedTextColor.YELLOW)),
-                Component.join(JoinConfiguration.commas(true),
-                    Component.text("X: ", NamedTextColor.GRAY).append(Component.text(location.x, NamedTextColor.YELLOW)),
-                    Component.text("Y: ", NamedTextColor.GRAY).append(Component.text(location.y, NamedTextColor.YELLOW)),
-                    Component.text("Z: ", NamedTextColor.GRAY).append(Component.text(location.z, NamedTextColor.YELLOW))
-                ),
-                Component.text("Facing: ", NamedTextColor.GRAY).append(Component.text(PoseFacing.getDirection(location).name, NamedTextColor.YELLOW)),
-                Component.text("Left door: ", NamedTextColor.GRAY).append(Component.text(leftDoor != null, if (leftDoor != null) NamedTextColor.YELLOW else NamedTextColor.RED)),
-                Component.text("Right door: ", NamedTextColor.GRAY).append(Component.text(rightDoor != null, if (rightDoor != null) NamedTextColor.YELLOW else NamedTextColor.RED)),
-                Component.text("Click to teleport", NamedTextColor.AQUA)
-            ).asHoverEvent()
-        ).clickEvent(ClickEvent.runCommand("/minecraft:tp @s ${location.x} ${location.y} ${location.z} ${location.yaw} ${location.pitch}"))
-    }
-
-    fun cleanup() {
-        setOpenness(Openness.OPEN)
-        leftDoor?.remove()
-        rightDoor?.remove()
-    }
-
-    enum class Openness {
-        OPEN,
-        BARELY,
-        HALF,
-        CLOSED
-    }
-
 }

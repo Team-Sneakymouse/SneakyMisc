@@ -1,189 +1,120 @@
 package com.danidipp.sneakymisc.elevators
 
-import com.danidipp.sneakymisc.SneakyMisc
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.SoundCategory
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
-import org.bukkit.event.inventory.InventoryClickEvent
-import org.bukkit.event.inventory.InventoryCloseEvent
-import org.bukkit.event.inventory.InventoryDragEvent
-import org.bukkit.event.inventory.InventoryOpenEvent
+import org.bukkit.event.inventory.*
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 
-class ElevatorGUI(private val elevator: Elevator) : InventoryHolder {
-    private val inventory = Bukkit.createInventory(this, 9*6, Component.text("Elevator ${elevator.name}"))
-    private var editingOnes = true
-    private var locked = false
+class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor) : InventoryHolder {
+    private val contents = Bukkit.createInventory(this, 54, Component.text("Elevator ${floor.elevator.name}"))
+    private val input = ElevatorFloorInput()
+    private var valid = true
+    private var pending = false
+    override fun getInventory(): Inventory = contents
+
     init {
-        val floor = elevator.currentFloor
-        inventory.setItem(8, getNumber(3046)) // Background
-
-        if (inventory.holder !is ElevatorGUI) throw IllegalArgumentException("Inventory is not an ElevatorGUI")
-        val floorId = floor?.id?.split("-")?.get(1)
-        if (floorId == null) {
-            inventory.setItem(4, null)
-            inventory.setItem(5, null)
-        } else {
-            if (floorId == "B") {
-                inventory.setItem(4, null)
-                inventory.setItem(5, getNumber(5996))
-                editingOnes = false
-            } else if (floorId == "G") {
-                inventory.setItem(4, null)
-                inventory.setItem(5, getNumber(5997))
-                editingOnes = false
-            } else {
-                val floorNumber = floorId.toInt()
-                val tens = if (floorNumber < 10) 10 else floorNumber / 10
-                val units = floorNumber % 10
-
-                inventory.setItem(4, getNumber(6000 + tens * 10))
-                inventory.setItem(5, getNumber(6000 + units))
-            }
-        }
+        contents.setItem(8, getNumber(3046))
+        val slots = listOf(12, 13, 14, 21, 22, 23, 30, 31, 32)
+        slots.forEachIndexed { index, slot -> contents.setItem(slot, getNumber(6001 + index, (index + 1).toString())) }
+        contents.setItem(40, getNumber(6000, "0"))
+        contents.setItem(39, getNumber(5996, "Basement"))
+        contents.setItem(48, getNumber(5997, "Ground"))
+        contents.setItem(41, button(Material.BARRIER, "Clear selection"))
+        renderInput()
     }
 
-    override fun getInventory(): Inventory {
-        return inventory
+    internal fun invalidate() {
+        valid = false
+        module.guis.remove(this)
+    }
+
+    private fun renderInput() {
+        contents.setItem(0, button(Material.PAPER, if (input.tens == null) "Enter tens digit first" else "Enter ones digit"))
+        contents.setItem(4, input.tens?.let { getNumber(6000 + it * 10, "Tens: $it") }
+            ?: button(Material.LIME_STAINED_GLASS_PANE, "Tens — enter first digit"))
+        contents.setItem(5, input.ones?.let { getNumber(6000 + it, "Ones: $it") }
+            ?: button(if (input.tens == null) Material.GRAY_STAINED_GLASS_PANE else Material.LIME_STAINED_GLASS_PANE, "Ones — enter second digit"))
+    }
+
+    private fun click(player: Player, slot: Int) {
+        if (!valid || pending) return
+        if (!floor.cab.contains(player.location) || module.travel.isDeparting(floor)) {
+            invalidate()
+            Bukkit.getScheduler().runTask(module.plugin, Runnable { if (player.openInventory.topInventory.holder === this) player.closeInventory() })
+            return
+        }
+        player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
+        val label = when (slot) {
+            12, 13, 14 -> input.digit(slot - 11)
+            21, 22, 23 -> input.digit(slot - 17)
+            30, 31, 32 -> input.digit(slot - 23)
+            40 -> input.digit(0)
+            39 -> "B"
+            48 -> "G"
+            41 -> { input.reset(); renderInput(); return }
+            else -> return
+        }
+        renderInput()
+        if (label == null) return
+        pending = true
+        // Inventory mutations/teleports must run after InventoryClickEvent. Invalidation makes this cancellable.
+        Bukkit.getScheduler().runTask(module.plugin, Runnable {
+            if (!valid || player.openInventory.topInventory.holder !== this) return@Runnable
+            val error = module.select(player, floor, label)
+            if (error == null) {
+                player.playSound(player, "lom:cute.get", SoundCategory.MASTER, .5f, 1f)
+                invalidate()
+                if (player.openInventory.topInventory.holder === this) player.closeInventory()
+            } else {
+                player.sendMessage(error)
+                player.playSound(player, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
+                contents.setItem(4, getNumber(5998, error))
+                contents.setItem(5, getNumber(5998, error))
+                Bukkit.getScheduler().runTaskLater(module.plugin, Runnable {
+                    if (valid) { input.reset(); pending = false; renderInput() }
+                }, 15)
+            }
+        })
     }
 
     companion object {
-        fun getNumber(modelData: Int): ItemStack {
-            val item = ItemStack(Material.JIGSAW)
-            val meta = item.itemMeta
-//            meta.isHideTooltip = true
-            meta.setCustomModelData(modelData)
-            item.itemMeta = meta
-            return item
+        fun getNumber(model: Int, label: String = " "): ItemStack = ItemStack(Material.JIGSAW).apply {
+            itemMeta = itemMeta.apply {
+                setCustomModelData(model)
+                displayName(Component.text(label, NamedTextColor.WHITE))
+            }
+        }
+        private fun button(material: Material, label: String) = ItemStack(material).apply {
+            itemMeta = itemMeta.apply { displayName(Component.text(label, NamedTextColor.WHITE)) }
         }
 
-        val listener = object : Listener{
+        fun listener(module: ElevatorsModule) = object : Listener {
             @EventHandler
-            fun onInventoryOpen(event: InventoryOpenEvent) {
-                if (event.inventory.holder !is ElevatorGUI) return
-                val gui = event.inventory.holder as ElevatorGUI
-                if (gui.elevator.inTransit) {
-                    event.isCancelled = true
-                    return
-                }
-                gui.elevator.guis.add(gui)
+            fun onOpen(event: InventoryOpenEvent) {
+                val gui = event.inventory.holder as? ElevatorGUI ?: return
+                val player = event.player as? Player ?: return
+                if (!gui.valid || !gui.floor.cab.contains(player.location) || module.travel.isDeparting(gui.floor)) event.isCancelled = true
+                else module.guis.add(gui)
             }
-
             @EventHandler
-            fun onInventoryClose(event: InventoryCloseEvent) {
-                if (event.inventory.holder !is ElevatorGUI) return
-                val gui = event.inventory.holder as ElevatorGUI
-                gui.elevator.guis.remove(gui)
-            }
-
+            fun onClose(event: InventoryCloseEvent) { (event.inventory.holder as? ElevatorGUI)?.invalidate() }
             @EventHandler
-            fun onInventoryDrag(event: InventoryDragEvent) {
-                if (event.inventory.holder !is ElevatorGUI) return
-                event.isCancelled = true
-            }
-
+            fun onDrag(event: InventoryDragEvent) { if (event.inventory.holder is ElevatorGUI) event.isCancelled = true }
             @EventHandler
-            fun onInventoryClick(event: InventoryClickEvent) {
-                if (event.inventory.holder !is ElevatorGUI) return
+            fun onClick(event: InventoryClickEvent) {
+                val gui = event.inventory.holder as? ElevatorGUI ?: return
                 event.isCancelled = true
                 if (event.clickedInventory != event.inventory) return
-                val gui = event.inventory.holder as ElevatorGUI
-                if (gui.locked || gui.elevator.inTransit) return
-                (event.whoClicked as Player).playSound(event.whoClicked, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
-
-                when (event.slot) {
-                    12 -> gui.updateDigit(1)
-                    13 -> gui.updateDigit(2)
-                    14 -> gui.updateDigit(3)
-                    21 -> gui.updateDigit(4)
-                    22 -> gui.updateDigit(5)
-                    23 -> gui.updateDigit(6)
-                    30 -> gui.updateDigit(7)
-                    31 -> gui.updateDigit(8)
-                    32 -> gui.updateDigit(9)
-                    39 -> gui.updateDigit(-1)
-                    40 -> gui.updateDigit(0)
-                    41 -> {
-                        val id = gui.getSelection()
-                        val floor = gui.elevator.getFloor("${gui.elevator.name}-$id")
-                        if (floor == null) {
-                            gui.locked = true
-                            gui.inventory.setItem(4, getNumber(5998))
-                            gui.inventory.setItem(5, getNumber(5998))
-                            (event.whoClicked as Player).playSound(event.whoClicked, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
-                            Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-                                gui.inventory.setItem(4, null)
-                                gui.inventory.setItem(5, null)
-                                Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-                                    gui.inventory.setItem(4, getNumber(5998))
-                                    gui.inventory.setItem(5, getNumber(5998))
-                                    Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-                                        gui.inventory.setItem(4, null)
-                                        gui.inventory.setItem(5, null)
-                                        gui.locked = false
-                                        gui.editingOnes = true
-                                    }, 5)
-                                }, 5)
-                            }, 5)
-                        } else {
-                            gui.locked = true
-                            gui.inventory.setItem(4, null)
-                            gui.inventory.setItem(5, getNumber(5999))
-                            (event.whoClicked as Player).playSound(event.whoClicked, "lom:cute.get", SoundCategory.MASTER, .5f, 1f)
-                            Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
-                                gui.locked = false
-                                gui.editingOnes = true
-                                gui.elevator.callTo(floor)
-                                gui.inventory.close()
-                            }, 10)
-                        }
-                    }
-                }
+                gui.click(event.whoClicked as? Player ?: return, event.slot)
             }
         }
-    }
-
-    private fun getSelection(): String {
-        var number = 0
-
-        when (val tens = inventory.getItem(4)?.itemMeta?.customModelData) {
-            null, 6100 -> {}
-            else -> if (tens in 6000..6098) number += tens - 6000
-        }
-        when (val units = inventory.getItem(5)?.itemMeta?.customModelData) {
-            null -> {}
-            5996 -> return "B"
-            5997 -> return "G"
-            else -> if (units in 6000..6098) number += units - 6000
-        }
-
-        return number.toString()
-    }
-
-    private fun updateDigit(number: Int) {
-        if (locked) return
-        if (number == -1) {
-            inventory.setItem(4, null)
-            inventory.setItem(5, getNumber(5996))
-            editingOnes = true
-            return
-        }
-
-        var digit = number * if (editingOnes) 1 else 10
-        if (!editingOnes && digit == 0) digit = 100
-        val item = getNumber(6000 + digit)
-        if (editingOnes) {
-            inventory.setItem(5, item)
-        } else {
-            inventory.setItem(4, item)
-        }
-
-        editingOnes = !editingOnes
     }
 }
