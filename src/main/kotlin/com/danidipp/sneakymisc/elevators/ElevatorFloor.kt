@@ -20,7 +20,14 @@ import org.bukkit.util.Vector
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
 
-class ElevatorFloor(val id: String, val cab: ElevatorCab, val elevator: Elevator) {
+class ElevatorFloor(
+    val id: String,
+    val cab: ElevatorCab,
+    val elevator: Elevator,
+    private val schedule: (Long, Runnable) -> BukkitTask = { delay, action ->
+        Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), action, delay)
+    },
+) {
     val location: Location get() = cab.location
     private var leftDoor: BlockDisplay? = null
     private var rightDoor: BlockDisplay? = null
@@ -40,10 +47,10 @@ class ElevatorFloor(val id: String, val cab: ElevatorCab, val elevator: Elevator
     private fun later(delay: Long, action: () -> Unit) {
         val expected = revision
         lateinit var task: BukkitTask
-        task = Bukkit.getScheduler().runTaskLater(SneakyMisc.getInstance(), Runnable {
+        task = schedule(delay, Runnable {
             tasks.remove(task)
             if (revision == expected) action()
-        }, delay)
+        })
         tasks.add(task)
     }
 

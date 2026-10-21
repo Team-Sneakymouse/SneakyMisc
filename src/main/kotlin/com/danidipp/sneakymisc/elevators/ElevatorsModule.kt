@@ -181,6 +181,9 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     }
 
     fun createFloor(id: String, position: Location): ElevatorFloor {
+        require(id.count { it == '-' } == 1 && !id.startsWith('-') && !id.endsWith('-')) {
+            "Format: <name>-<floor>"
+        }
         val elevator = requireNotNull(elevators[id.substringBeforeLast('-')]) { "Create the elevator first: /elevator create <name> <style>" }
         requireLabel(id.substringAfterLast('-'))
         require(getFloor(id) == null) { "Elevator floor already exists" }

@@ -79,6 +79,58 @@ class ElevatorsModuleTest {
         } finally { f.directory.deleteRecursively() }
     }
 
+    @Test fun `floor creation rejects missing or malformed name label separators`() {
+        val f = Fixture()
+        try {
+            val module = ElevatorsModule(f.logger, f.plugin)
+            listOf("1", "B", "G", "tower").forEach { module.createElevator(it, "stone") }
+            mockConstruction(ElevatorFloor::class.java) { floor, context ->
+                val id = context.arguments()[0] as String
+                val cab = context.arguments()[1] as ElevatorCab
+                `when`(floor.id).thenReturn(id)
+                `when`(floor.cab).thenReturn(cab)
+                `when`(floor.location).thenReturn(cab.location)
+            }.use {
+                for (id in listOf("1", "B", "G", "tower", "tower-", "-1", "tower-1-2")) {
+                    val failure = assertFailsWith<IllegalArgumentException>("Accepted malformed floor ID: $id") {
+                        module.createFloor(id, Location(f.world, .5, 60.0, .5))
+                    }
+                    assertEquals("Format: <name>-<floor>", failure.message)
+                    assertNull(module.getFloor(id))
+                }
+            }
+        } finally { f.directory.deleteRecursively() }
+    }
+
+    @Test fun `accepted floor IDs stay selectable and unchanged after saving and loading`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                mockConstruction(ElevatorFloor::class.java) { floor, context ->
+                    val id = context.arguments()[0] as String
+                    val cab = context.arguments()[1] as ElevatorCab
+                    `when`(floor.id).thenReturn(id)
+                    `when`(floor.cab).thenReturn(cab)
+                    `when`(floor.location).thenReturn(cab.location)
+                }.use {
+                    val module = ElevatorsModule(f.logger, f.plugin)
+                    listOf("1", "B", "G", "tower").forEach { module.createElevator(it, "stone") }
+                    val ids = listOf("1-1", "B-B", "G-G", "tower-0", "tower-99", "tower-B", "tower-G")
+                    ids.forEachIndexed { index, id ->
+                        module.createFloor(id, Location(f.world, index * 10.0 + .5, 60.0, .5))
+                    }
+                    val loaded = ElevatorsModule(f.logger, f.plugin)
+                    for (id in ids) {
+                        assertEquals(id, loaded.getFloor(id)?.id)
+                        val elevator = loaded.getElevator(id.substringBefore('-'))!!
+                        assertEquals(id, elevator.getFloor("${elevator.name}-${id.substringAfter('-')}")?.id)
+                    }
+                }
+            }
+        } finally { f.directory.deleteRecursively() }
+    }
+
     @Test fun `arrival interrupts only GUI users inside destination before moving current transit occupants`() {
         val f = Fixture()
         try {
