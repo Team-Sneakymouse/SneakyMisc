@@ -77,6 +77,9 @@ dependencies {
 	testImplementation("io.papermc.paper:paper-api:26.2.build.117-stable")
 	testImplementation("me.clip:placeholderapi:2.11.6")
 	testImplementation("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
+	testRuntimeOnly("io.github.team-sneakymouse:sneakyutils:2026.10.18-657d452bd6f4") {
+		isTransitive = false
+	}
 }
 
 tasks.processResources {

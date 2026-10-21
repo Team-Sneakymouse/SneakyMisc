@@ -14,6 +14,14 @@ class ElevatorCommandUtils(
 ) {
     val elevatorSuggestions = suggestionProvider { module.getElevators().map { it.name }.sorted() }
     val floorSuggestions = suggestionProvider { module.getElevators().flatMap { it.getFloors().map { floor -> floor.id } }.sorted() }
+    val cabSuggestions = suggestionProvider { module.getTransitCabs().map { it.name }.sorted() }
+    val styleSuggestions = suggestionProvider { (module.getElevators().map { it.style } + module.getTransitCabs().map { it.style }).distinct().sorted() }
+
+    fun attempt(context: CommandContext<CommandSourceStack>, action: () -> String): Int = try {
+        success(context, action())
+    } catch (failure: IllegalArgumentException) {
+        fail(context, failure.message ?: "Invalid elevator setup")
+    }
 
     fun suggestionProvider(values: () -> Iterable<String>): SuggestionProvider<CommandSourceStack> {
         return SuggestionProvider { _, builder -> suggest(values(), builder) }

@@ -40,15 +40,21 @@ _Avoid_: character, account record
 ### Elevators
 
 **Elevator**:
-A named transport system that moves accounts between its floors.
+A named transport system that moves accounts between its elevator floors and has an elevator style.
 
 **Elevator Floor**:
-A named stop in exactly one elevator, with a physical location and doors that open when the elevator arrives.
+A named location in exactly one elevator, with a fixed-size cab and independently available doors.
 _Avoid_: floor, stop
 
 **Elevator Travel**:
-The movement of an elevator from its current elevator floor to a target elevator floor.
+One group's movement from a departure elevator floor to a destination elevator floor through an exclusively reserved transit cab. Occupants can leave or be summoned in during elevator travel.
 _Avoid_: elevator call, trip, ride
+
+**Transit Cab**:
+A fixed-size physical cab away from playable areas, used exclusively for one elevator travel at a time.
+
+**Elevator Style**:
+A tag identifying a cab's wall design. Elevators and transit cabs with the same elevator style share a compatible pool; all styles use the same cab dimensions.
 
 ### DClock
 
