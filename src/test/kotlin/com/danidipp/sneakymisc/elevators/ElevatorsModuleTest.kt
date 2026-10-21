@@ -203,14 +203,27 @@ class ElevatorsModuleTest {
                 for (particle in arrivalParticles) {
                     val position = particle.arguments[1] as Location
                     assertTrue(destination.cab.contains(position))
-                    assertEquals(Particle.DUST, particle.arguments[0])
-                    assertEquals(0, particle.arguments[2])
+                    assertEquals(Particle.TRAIL, particle.arguments[0])
+                    assertEquals(1, particle.arguments[2])
                     assertEquals(listOf(0.0, 0.0, 0.0, 0.0), particle.arguments.slice(3..6))
-                    val dust = particle.arguments[7] as Particle.DustOptions
-                    assertTrue(dust.color.blue > dust.color.green && dust.color.red > dust.color.green)
+                    val trail = particle.arguments[7] as Particle.Trail
+                    assertTrue(destination.cab.contains(trail.target))
+                    assertEquals(.6, position.y - trail.target.y, .00001) // Same-height travel settles downward.
+                    assertEquals(12, trail.duration)
+                    assertTrue(trail.color.blue > trail.color.green && trail.color.red > trail.color.green)
                 }
                 f.particleTicks.single().run() // A stale tick must not emit after arrival.
                 assertEquals(emitted, mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" })
+                verify(f.scheduler).runTaskLater(eq(f.plugin), any(Runnable::class.java), eq(12L))
+                f.callbacks.last().run()
+                val restingParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.drop(emitted)
+                assertEquals(18, restingParticles.size)
+                for ((arrival, resting) in arrivalParticles.zip(restingParticles)) {
+                    assertEquals((arrival.arguments[7] as Particle.Trail).target, resting.arguments[1])
+                    assertEquals(Particle.DUST, resting.arguments[0])
+                    assertEquals(listOf(0.0, 0.0, 0.0, 0.0), resting.arguments.slice(3..6))
+                    assertEquals((arrival.arguments[7] as Particle.Trail).color, (resting.arguments[7] as Particle.DustOptions).color)
+                }
             }
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
@@ -285,11 +298,24 @@ class ElevatorsModuleTest {
                     val particles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }
                     assertEquals(6, particles.size)
                     for (particle in particles) {
-                        assertTrue(module.getTransitCabs().single().cab.contains(particle.arguments[1] as Location))
-                        assertEquals(-destinationY.compareTo(60.0).toDouble(), particle.arguments[4])
-                        assertEquals(0.0, particle.arguments[3])
-                        assertEquals(0.0, particle.arguments[5])
-                        assertEquals(.2, particle.arguments[6])
+                        val cab = module.getTransitCabs().single().cab
+                        val position = particle.arguments[1] as Location
+                        assertTrue(cab.contains(position))
+                        if (destinationY == 60.0) {
+                            assertEquals(Particle.DUST, particle.arguments[0])
+                        } else {
+                            assertEquals(Particle.TRAIL, particle.arguments[0])
+                            val trail = particle.arguments[7] as Particle.Trail
+                            assertTrue(cab.contains(trail.target))
+                            assertEquals(position.x, trail.target.x)
+                            assertEquals(position.z, trail.target.z)
+                            val travelDirection = destinationY.compareTo(60.0)
+                            assertEquals(-travelDirection, trail.target.y.compareTo(position.y))
+                            assertEquals(3.2, kotlin.math.abs(trail.target.y - position.y), .00001)
+                            assertTrue(trail.duration in 16..24)
+                            assertTrue(trail.color.blue > trail.color.green && trail.color.red > trail.color.green)
+                        }
+                        assertEquals(listOf(0.0, 0.0, 0.0, 0.0), particle.arguments.slice(3..6))
                     }
                     player.teleport(origin.location)
                     f.particleTicks.single().run()

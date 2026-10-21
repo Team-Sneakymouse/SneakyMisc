@@ -29,9 +29,17 @@ internal class ElevatorParticles(
                     2 -> alongWall to -2.1
                     else -> alongWall to 2.1
                 }
-                val position = cab.location.clone().add(x, Random.nextDouble(.4, 3.6), z)
-                // Count zero sends a single particle with a velocity rather than a random spread.
-                position.world.spawnParticle(Particle.DUST, position, 0, 0.0, movementY, 0.0, .2, PURPLE)
+                if (movementY == 0.0) {
+                    val position = cab.location.clone().add(x, Random.nextDouble(.4, 3.6), z)
+                    position.world.spawnParticle(Particle.DUST, position, 0, 0.0, 0.0, 0.0, 0.0, PURPLE)
+                } else {
+                    val startY = if (movementY > 0.0) .4 else 3.6
+                    val targetY = if (movementY > 0.0) 3.6 else .4
+                    val position = cab.location.clone().add(x, startY, z)
+                    val target = cab.location.clone().add(x, targetY, z)
+                    val trail = Particle.Trail(target, PURPLE.color, Random.nextInt(16, 25))
+                    position.world.spawnParticle(Particle.TRAIL, position, 1, 0.0, 0.0, 0.0, 0.0, trail)
+                }
             }
         }, 0L, 3L)
     }
@@ -42,16 +50,29 @@ internal class ElevatorParticles(
         task = null
     }
 
-    companion object {
-        private val PURPLE = Particle.DustOptions(Color.fromRGB(180, 75, 255), .7f)
-
-        fun arrival(cab: ElevatorCab) {
-            repeat(18) {
-                val position = cab.location.clone().add(
-                    Random.nextDouble(-2.1, 2.1), Random.nextDouble(.4, 3.6), Random.nextDouble(-2.1, 2.1),
-                )
+    fun arrival(destination: ElevatorCab) {
+        val restingPoints = List(18) {
+            destination.location.clone().add(
+                Random.nextDouble(-2.1, 2.1), Random.nextDouble(1.0, 3.0), Random.nextDouble(-2.1, 2.1),
+            )
+        }
+        for (target in restingPoints) {
+            // Continue the transit flow, but travel only a short distance as the elevator settles.
+            val position = target.clone().add(0.0, if (movementY == 0.0) .6 else -movementY * .6, 0.0)
+            val trail = Particle.Trail(target, PURPLE.color, ARRIVAL_DURATION)
+            position.world.spawnParticle(Particle.TRAIL, position, 1, 0.0, 0.0, 0.0, 0.0, trail)
+        }
+        // Trail particles expire at their target. Dust gives the resting points a brief lingering shimmer.
+        // This one-shot arrival effect intentionally outlives the transit emitter's stop().
+        Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            for (position in restingPoints) {
                 position.world.spawnParticle(Particle.DUST, position, 0, 0.0, 0.0, 0.0, 0.0, PURPLE)
             }
-        }
+        }, ARRIVAL_DURATION.toLong())
+    }
+
+    companion object {
+        private const val ARRIVAL_DURATION = 12
+        private val PURPLE = Particle.DustOptions(Color.fromRGB(180, 75, 255), .7f)
     }
 }

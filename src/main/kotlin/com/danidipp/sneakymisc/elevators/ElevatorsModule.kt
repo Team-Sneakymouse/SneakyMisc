@@ -98,7 +98,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             return ElevatorTask { task.cancel() }
         }
         override fun arrive(cab: ElevatorTransitCab, destination: ElevatorFloor) {
-            if (transfer(cab.cab, destination.cab, false) > 0) ElevatorParticles.arrival(destination.cab)
+            if (transfer(cab.cab, destination.cab, false) > 0) particles[cab]?.arrival(destination.cab)
         }
         override fun failed(origin: ElevatorFloor, failure: Exception) {
             logger.log(Level.SEVERE, "Elevator travel from ${origin.id} failed", failure)
