@@ -20,11 +20,13 @@ import org.mockito.Mockito.*
 
 class ElevatorsModuleTest {
     private class Fixture {
+        val doors = mockConstruction(ElevatorDoors::class.java)
         val directory = Files.createTempDirectory("elevator-test").toFile()
         val plugin = mock(Plugin::class.java)
         val world = mock(World::class.java)
         val scheduler = mock(BukkitScheduler::class.java)
         val callbacks = mutableListOf<Runnable>()
+        val delays = mutableListOf<Long>()
         val accounts = mutableListOf<Player>()
         val logger = Logger.getLogger("elevators-test")
         init {
@@ -37,12 +39,13 @@ class ElevatorsModuleTest {
             val chunk = mock(Chunk::class.java)
             `when`(world.getChunkAt(anyInt(), anyInt())).thenReturn(chunk)
             `when`(scheduler.runTaskLater(eq(plugin), any(Runnable::class.java), anyLong())).thenAnswer {
-                callbacks.add(it.getArgument(1)); mock(BukkitTask::class.java)
+                callbacks.add(it.getArgument(1)); delays.add(it.getArgument(2)); mock(BukkitTask::class.java)
             }
         }
         fun player(position: Location): Player {
             val player = mock(Player::class.java)
             var current = position
+            `when`(player.isOnline).thenReturn(true)
             `when`(player.uniqueId).thenReturn(UUID.randomUUID())
             `when`(player.location).thenAnswer { current.clone() }
             `when`(player.teleport(any(Location::class.java))).thenAnswer { current = it.getArgument(0); true }
@@ -81,7 +84,7 @@ class ElevatorsModuleTest {
                 assertEquals(100.5, cab.cab.location.x)
                 assertEquals(90f, cab.cab.location.yaw)
             }
-        } finally { f.directory.deleteRecursively() }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
     @Test fun `floor creation rejects missing or malformed name label separators`() {
@@ -104,7 +107,7 @@ class ElevatorsModuleTest {
                     assertNull(module.getFloor(id))
                 }
             }
-        } finally { f.directory.deleteRecursively() }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
     @Test fun `accepted floor IDs stay selectable and unchanged after saving and loading`() {
@@ -133,7 +136,7 @@ class ElevatorsModuleTest {
                     }
                 }
             }
-        } finally { f.directory.deleteRecursively() }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
     @Test fun `arrival interrupts only GUI users inside destination before moving current transit occupants`() {
@@ -164,11 +167,13 @@ class ElevatorsModuleTest {
                 val selectedGui = gui(selecting)
                 val outsideGui = gui(outside)
                 assertEquals(ElevatorDepartureResult.STARTED, module.travel.start(origin, destination))
+                verify(f.doors.constructed().last(), times(2)).initialize()
                 closed!!()
                 assertEquals(100.5, incoming.location.x)
                 // A summoned account is discovered at arrival without registration or music.
                 val summoned = f.player(incoming.location.clone().add(1.0, 0.0, 0.0))
-                f.callbacks.single().run()
+                f.callbacks.filterIndexed { index, _ -> f.delays[index] == 2L }.forEach { it.run() }
+                f.callbacks.filterIndexed { index, _ -> f.delays[index] == ElevatorsModule.SONG_DURATION + 20 }.single().run()
                 assertEquals(20.5, incoming.location.x)
                 assertEquals(21.5, summoned.location.x)
                 verify(selectedGui).invalidate()
@@ -178,11 +183,95 @@ class ElevatorsModuleTest {
                 verify(selecting).playSound(selecting, "minecraft:block.amethyst_block.chime", SoundCategory.MASTER, 1f, 1.5f)
                 verify(outside, never()).damage(anyDouble())
                 verify(bystander, never()).damage(anyDouble())
-                verify(summoned, never()).playSound(summoned, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
-                verify(incoming).playSound(incoming, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+                verify(summoned, never()).playSound(any(Location::class.java), eq("lom:elevator"), eq(SoundCategory.MASTER), anyFloat(), anyFloat())
+                verify(incoming).playSound(any(Location::class.java), eq("lom:elevator"), eq(SoundCategory.MASTER), eq(1f), eq(1f))
                 verify(destination).open()
             }
-        } finally { f.directory.deleteRecursively() }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `transit doors initialize on creation and reload and are removed on deletion`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                val created = f.doors.constructed().single()
+                verify(created).initialize()
+                val loaded = ElevatorsModule(f.logger, f.plugin)
+                verify(f.doors.constructed().last()).initialize()
+                loaded.deleteTransitCab("stone1")
+                verify(f.doors.constructed().last()).cleanup()
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `transit keypad uses the keypad model and cancels interaction without opening a GUI`() {
+        val f = Fixture()
+        try {
+            val module = ElevatorsModule(f.logger, f.plugin)
+            module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+            val frame = mock(ItemFrame::class.java)
+            val pdc = mock(PersistentDataContainer::class.java)
+            `when`(frame.location).thenReturn(Location(f.world, 102.96875, -38.5, .5))
+            `when`(frame.persistentDataContainer).thenReturn(pdc)
+            mockConstruction(ItemStack::class.java) { item, _ ->
+                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java))
+            }.use {
+                module.linkTransitKeypad(frame, "stone1")
+                verify(frame).setVisible(false)
+                verify(frame).setItem(any(ItemStack::class.java))
+                verify(pdc).remove(ElevatorsModule.CONTROL_FLOOR)
+                verify(pdc).remove(ElevatorsModule.CONTROL_MODE)
+                verify(pdc).set(ElevatorsModule.TRANSIT_KEYPAD, PersistentDataType.STRING, "stone1")
+            }
+            `when`(pdc.has(ElevatorsModule.TRANSIT_KEYPAD, PersistentDataType.STRING)).thenReturn(true)
+            val player = f.player(Location(f.world, 100.5, -40.0, .5))
+            for (hand in org.bukkit.inventory.EquipmentSlot.entries.filter { it == org.bukkit.inventory.EquipmentSlot.HAND || it == org.bukkit.inventory.EquipmentSlot.OFF_HAND }) {
+                val event = org.bukkit.event.player.PlayerInteractEntityEvent(player, frame, hand)
+                module.onFrame(event)
+                assertTrue(event.isCancelled)
+            }
+            verify(player, never()).openInventory(any(Inventory::class.java))
+            verify(frame, times(1)).setItem(any(ItemStack::class.java))
+            `when`(frame.location).thenReturn(Location(f.world, 110.5, -38.5, .5))
+            assertFailsWith<IllegalArgumentException> { module.linkTransitKeypad(frame, "stone1") }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `boarding starts positional music after teleport and cancels a pending start when leaving`() {
+        for (leaveBeforeStart in listOf(false, true)) {
+            val f = Fixture()
+            try {
+                mockStatic(Bukkit::class.java).use { bukkit ->
+                    bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                    val module = ElevatorsModule(f.logger, f.plugin)
+                    module.createElevator("tower", "stone")
+                    val origin = f.floor(module, "1", .5)
+                    val destination = f.floor(module, "2", 20.5)
+                    module.createTransitCab("stone1", "stone", Location(f.world, 100.5, 60.0, .5))
+                    val player = f.player(origin.location.clone())
+                    var closed: (() -> Unit)? = null
+                    doAnswer { call -> closed = call.getArgument(0); ElevatorTask {} }.`when`(origin).close(callbackMatcher())
+                    assertEquals(ElevatorDepartureResult.STARTED, module.travel.start(origin, destination))
+                    closed!!()
+                    assertEquals(100.5, player.location.x)
+                    verify(player, never()).playSound(eq(player), eq("lom:elevator"), eq(SoundCategory.MASTER), anyFloat(), anyFloat())
+                    verify(player, never()).playSound(any(Location::class.java), eq("lom:elevator"), eq(SoundCategory.MASTER), anyFloat(), anyFloat())
+                    assertTrue(f.delays.any { it in 1L..10L }, "Music must be scheduled after teleport")
+                    if (leaveBeforeStart) {
+                        val from = player.location
+                        player.teleport(origin.location)
+                        module.onTeleport(org.bukkit.event.player.PlayerTeleportEvent(player, from, origin.location))
+                        // Returning before the callback fires must not revive the old music start.
+                        player.teleport(from)
+                    }
+                    f.callbacks.filterIndexed { index, _ -> f.delays[index] in 1L..10L }.forEach { it.run() }
+                    verify(player, times(if (leaveBeforeStart) 0 else 1)).playSound(any(Location::class.java), eq("lom:elevator"), eq(SoundCategory.MASTER), eq(1f), eq(1f))
+                }
+            } finally { f.doors.close(); f.directory.deleteRecursively() }
+        }
     }
 
     private fun callbackMatcher(): () -> Unit {
@@ -216,7 +305,7 @@ class ElevatorsModuleTest {
                     verify(frame).setItem(any(ItemStack::class.java))
                 }
             }
-        } finally { f.directory.deleteRecursively() }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
     @Test fun `outside frames including other floors and worlds become call controls for the named floor`() {
@@ -242,6 +331,6 @@ class ElevatorsModuleTest {
                 verify(pdc).set(ElevatorsModule.CONTROL_MODE, PersistentDataType.STRING, "call")
                 verify(frame).setItem(null)
             }
-        } finally { f.directory.deleteRecursively() }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 }

@@ -19,6 +19,8 @@ import org.bukkit.event.server.PluginDisableEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import org.bukkit.scheduler.BukkitTask
+import java.util.UUID
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import java.io.File
 import java.util.logging.Level
@@ -28,6 +30,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     companion object {
         val deps = emptyList<String>()
         val CONTROL_FLOOR = NamespacedKey("sneakymisc", "elevator_control_floor")
+        val TRANSIT_KEYPAD = NamespacedKey("sneakymisc", "elevator_transit_keypad")
         val CONTROL_MODE = NamespacedKey("sneakymisc", "elevator_control_mode")
         const val SONG_DURATION = 310L
     }
@@ -38,6 +41,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     internal val guis = mutableSetOf<ElevatorGUI>()
     private val chunkUsers = mutableMapOf<Chunk, Int>()
     private val leases = mutableMapOf<ElevatorTransitCab, MutableList<Chunk>>()
+    private val pendingMusic = mutableMapOf<UUID, BukkitTask>()
     private var stopped = false
     private val utils = ElevatorCommandUtils(this)
     override val commands = listOf(
@@ -60,6 +64,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             }
             origin.ensureDoors()
             destination.ensureDoors()
+            cab.initialize()
         }
         override fun release(origin: ElevatorFloor, destination: ElevatorFloor, cab: ElevatorTransitCab) {
             for (chunk in leases.remove(cab).orEmpty()) {
@@ -124,6 +129,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             }
         }
         getElevators().flatMap { it.getFloors() }.forEach { it.initialize() }
+        transitCabs.values.forEach { it.initialize() }
         logger.info("Loaded ${elevators.size} elevators and ${transitCabs.size} transit cabs")
         if (File(plugin.dataFolder, "elevator.yml").exists()) {
             logger.info("Legacy elevator.yml is ignored. Set up elevators using /elevator create and /elevatorfloor create.")
@@ -137,7 +143,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             if (!from.contains(player.location)) continue
             if (player.teleport(from.destination(player.location, to))) {
                 moved++
-                if (music) player.playSound(player, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+                if (music) startMusic(player, to)
                 else player.stopSound("lom:elevator", SoundCategory.MASTER)
             } else {
                 logger.warning("Elevator teleport rejected for ${player.uniqueId}")
@@ -145,6 +151,20 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             }
         }
         return moved
+    }
+
+    private fun startMusic(player: Player, cab: ElevatorCab) {
+        pendingMusic.remove(player.uniqueId)?.cancel()
+        lateinit var task: BukkitTask
+        // Give the client time to apply the teleport before starting a positional sound.
+        task = Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            if (pendingMusic[player.uniqueId] !== task) return@Runnable
+            pendingMusic.remove(player.uniqueId)
+            if (!stopped && player.isOnline && cab.contains(player.location)) {
+                player.playSound(player.location, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+            }
+        }, 2L)
+        pendingMusic[player.uniqueId] = task
     }
 
     private fun chunks(cab: ElevatorCab): List<Chunk> {
@@ -209,13 +229,14 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         require(name !in transitCabs) { "Transit cab already exists" }
         val cab = ElevatorCab.at(position)
         requireAvailable(cab)
-        transitCabs[name] = ElevatorTransitCab(name, requireStyle(style), cab)
+        transitCabs[name] = ElevatorTransitCab(name, requireStyle(style), cab).also { it.initialize() }
         saveConfig()
     }
 
     fun deleteTransitCab(name: String) {
         val cab = requireNotNull(transitCabs[name]) { "Transit cab not found" }
         require(!travel.uses(cab)) { "Transit cab has active travel" }
+        cab.cleanup()
         transitCabs.remove(name)
         saveConfig()
     }
@@ -250,11 +271,22 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
 
     fun link(frame: ItemFrame, floor: ElevatorFloor): String {
         val mode = if (floor.cab.contains(frame.location)) "select" else "call"
+        frame.persistentDataContainer.remove(TRANSIT_KEYPAD)
         frame.persistentDataContainer.set(CONTROL_FLOOR, PersistentDataType.STRING, floor.id)
         frame.persistentDataContainer.set(CONTROL_MODE, PersistentDataType.STRING, mode)
         frame.isVisible = false
         frame.setItem(if (mode == "select") ElevatorGUI.getNumber(5994) else null)
         return if (mode == "select") "keypad" else "call control"
+    }
+
+    fun linkTransitKeypad(frame: ItemFrame, name: String) {
+        val cab = requireNotNull(transitCabs[name]) { "Transit cab not found" }
+        require(cab.cab.contains(frame.location)) { "Place the keypad inside this transit cab" }
+        frame.persistentDataContainer.remove(CONTROL_FLOOR)
+        frame.persistentDataContainer.remove(CONTROL_MODE)
+        frame.persistentDataContainer.set(TRANSIT_KEYPAD, PersistentDataType.STRING, name)
+        frame.isVisible = false
+        frame.setItem(ElevatorGUI.getNumber(5994))
     }
 
     fun saveConfig() {
@@ -273,8 +305,12 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
 
     @EventHandler(ignoreCancelled = true)
     fun onFrame(event: PlayerInteractEntityEvent) {
-        if (event.hand != EquipmentSlot.HAND) return
         val frame = event.rightClicked as? ItemFrame ?: return
+        if (frame.persistentDataContainer.has(TRANSIT_KEYPAD, PersistentDataType.STRING)) {
+            event.isCancelled = true
+            return
+        }
+        if (event.hand != EquipmentSlot.HAND) return
         val id = frame.persistentDataContainer.get(CONTROL_FLOOR, PersistentDataType.STRING)
         if (id != null) {
             event.isCancelled = true
@@ -283,8 +319,19 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             else call(floor)
             return
         }
-        if (!event.player.hasPermission("sneakymisc.elevatorfloor")) return
+        if (!event.player.hasPermission("sneakymisc.elevatorfloor") && !event.player.hasPermission("sneakymisc.elevator")) return
         val name = event.player.inventory.itemInMainHand.itemMeta?.customName()?.let { PlainTextComponentSerializer.plainText().serialize(it) } ?: return
+        if (name in transitCabs && event.player.hasPermission("sneakymisc.elevator")) {
+            event.isCancelled = true
+            try {
+                linkTransitKeypad(frame, name)
+                event.player.sendMessage("Linked decorative keypad to $name")
+            } catch (failure: IllegalArgumentException) {
+                event.player.sendMessage(failure.message ?: "Invalid transit keypad")
+            }
+            return
+        }
+        if (!event.player.hasPermission("sneakymisc.elevatorfloor")) return
         val floor = getFloor(name) ?: return
         val control = link(frame, floor)
         event.isCancelled = true
@@ -311,6 +358,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onTeleport(event: PlayerTeleportEvent) {
         if (transitCabs.values.any { it.cab.contains(event.from) && !it.cab.contains(event.to) }) {
+            pendingMusic.remove(event.player.uniqueId)?.cancel()
             event.player.stopSound("lom:elevator", SoundCategory.MASTER)
         }
     }
@@ -319,6 +367,8 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     fun onDisable(event: PluginDisableEvent) {
         if (event.plugin !== plugin) return
         stopped = true
+        pendingMusic.values.forEach { it.cancel() }
+        pendingMusic.clear()
         travel.shutdown()
         guis.toList().forEach { it.invalidate(); it.inventory.close() }
         getElevators().flatMap { it.getFloors() }.forEach { it.stop() }

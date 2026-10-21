@@ -42,4 +42,10 @@ class ElevatorCab(val location: Location) {
     }
 }
 
-class ElevatorTransitCab(val name: String, var style: String, val cab: ElevatorCab)
+class ElevatorTransitCab(val name: String, var style: String, val cab: ElevatorCab) {
+    // The namespace cannot collide with an elevator floor ID.
+    private val doors = ElevatorDoors("transit:$name", cab)
+
+    internal fun initialize() = doors.initialize()
+    internal fun cleanup() = doors.cleanup()
+}

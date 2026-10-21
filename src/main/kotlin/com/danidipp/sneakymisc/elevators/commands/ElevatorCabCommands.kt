@@ -5,11 +5,12 @@ import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.tree.LiteralCommandNode
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
+import org.bukkit.entity.ItemFrame
 
 internal class ElevatorCabCommands(private val module: ElevatorsModule, private val utils: ElevatorCommandUtils) {
     fun build(): LiteralCommandNode<CommandSourceStack> = Commands.literal("elevatorcab")
         .requires { it.sender.hasPermission("sneakymisc.elevator") }
-        .executes { utils.fail(it, "Usage: /elevatorcab <create|style|delete|list>") }
+        .executes { utils.fail(it, "Usage: /elevatorcab <create|style|delete|list|link>") }
         .then(Commands.literal("list").executes { context ->
             module.getTransitCabs().forEach { cab ->
                 val pos = cab.cab.location
@@ -31,6 +32,14 @@ internal class ElevatorCabCommands(private val module: ElevatorsModule, private 
                     "Updated transit cab style"
                 }
             })))
+        .then(Commands.literal("link").then(Commands.argument("name", StringArgumentType.word()).suggests(utils.cabSuggestions).executes { context ->
+            val player = context.requirePlayer("Only players can link transit keypads") ?: return@executes 0
+            val frame = player.getTargetEntity(5) as? ItemFrame ?: return@executes utils.fail(context, "Look at an item frame within five blocks")
+            utils.attempt(context) {
+                module.linkTransitKeypad(frame, context.stringArg("name"))
+                "Linked decorative keypad to ${context.stringArg("name")}"
+            }
+        }))
         .then(Commands.literal("delete").then(Commands.argument("name", StringArgumentType.word()).suggests(utils.cabSuggestions).executes { context ->
             utils.attempt(context) {
                 module.deleteTransitCab(context.stringArg("name"))

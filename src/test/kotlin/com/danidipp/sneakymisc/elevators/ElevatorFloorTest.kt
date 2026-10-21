@@ -45,7 +45,7 @@ class ElevatorFloorTest {
         fun pending() = tasks.filter { !it.fired && !it.cancelled }
     }
 
-    private class Fixture {
+    private class Fixture(val transit: Boolean = false) {
         val ticks = Ticks()
         val world = mock(World::class.java)
         val materials = mutableMapOf<Triple<Int, Int, Int>, Material>()
@@ -73,14 +73,14 @@ class ElevatorFloorTest {
                 }
             }
             floor = ElevatorFloor("tower-1", ElevatorCab.at(Location(world, .5, 60.0, .5)), Elevator("tower", "stone"), ticks::schedule)
-            floor.initialize()
+            if (transit) ElevatorTransitCab("stone1", "stone", floor.cab).initialize() else floor.initialize()
         }
 
         private fun door(side: String): BlockDisplay {
             val door = mock(BlockDisplay::class.java)
             val pdc = mock(PersistentDataContainer::class.java)
             `when`(door.persistentDataContainer).thenReturn(pdc)
-            `when`(pdc.get(ElevatorFloor.ELEVATOR_KEY, PersistentDataType.STRING)).thenReturn("tower-1:$side")
+            `when`(pdc.get(ElevatorFloor.ELEVATOR_KEY, PersistentDataType.STRING)).thenReturn(if (transit) "transit:stone1:$side" else "tower-1:$side")
             `when`(door.isValid).thenReturn(true)
             var transformation = Transformation(Vector3f(), AxisAngle4f(), Vector3f(1f), AxisAngle4f())
             `when`(door.transformation).thenAnswer { transformation }
@@ -99,6 +99,15 @@ class ElevatorFloorTest {
             assertEquals(-1.5f, left.transformation.translation.x)
             assertEquals(0f, right.transformation.translation.x)
         }
+    }
+
+    @Test fun `transit cab initializes matching closed door visuals and collision without scheduled opening`() {
+        val f = Fixture(transit = true)
+        f.assertClosedDoorway()
+        f.ticks.advance(1000)
+        f.assertClosedDoorway()
+        assertTrue(f.ticks.pending().isEmpty())
+        verify(f.world, never()).playSound(any(Location::class.java), anyString(), any(SoundCategory::class.java), anyFloat(), anyFloat())
     }
 
     @Test fun `reopening during closing cancels departure and ignores stale barrier tasks`() {

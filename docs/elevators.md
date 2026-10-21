@@ -2,7 +2,7 @@
 
 Every elevator floor has its own available cab. Calls open that elevator floor's doors immediately, including when other elevator floors are open or occupied transit cabs have exhausted capacity.
 
-Elevator travel uses a separate, physically isolated transit cab. All cabs have a fixed **5 × 5 block interior, 4 blocks high**, with a three-block-wide, four-block-high animated doorway. Style tags identify wall designs only. Build the matching interiors yourself; registering a transit cab does not copy blocks or add doors to it.
+Elevator travel uses a separate, physically isolated transit cab. All cabs have a fixed **5 × 5 block interior, 4 blocks high**, with a three-block-wide, four-block-high animated doorway. Style tags identify wall designs only. Build the matching interiors yourself; registering a transit cab adds permanently closed doors with the same appearance and collision as elevator-floor doors. Registration does not copy the interior blocks. Existing registered transit cabs receive doors when the plugin loads.
 
 ## Setup
 
@@ -38,15 +38,22 @@ Place transit cabs beyond the configured proximity voice range of **both ordinar
 | `/elevatorfloor open <name-floor>` | Same as call |
 | `/elevatorfloor close <name-floor>` | Cancel an uncommitted departure and close doors |
 | `/elevatorfloor delete <name-floor>` | Remove an inactive elevator floor and its animated doors |
+| `/elevatorcab link <name>` | Link an inside item frame as a decorative, nonfunctional keypad |
 | `/elevatorcab list` | List transit cabs, styles, and locations |
 | `/elevatorcab style <name> <style>` | Change an inactive transit cab's style |
-| `/elevatorcab delete <name>` | Remove an inactive transit-cab registration; leave its blocks |
+| `/elevatorcab delete <name>` | Remove an inactive transit cab and its generated doors; leave the built interior |
 
 Elevator and transit-cab names accept letters, digits, and underscores. Styles accept lowercase letters, digits, underscores, and hyphens. Elevator floor labels are B, G, or 0–99 without leading zeros. B/G are distinct from numeric floor 0.
 
 Elevator and transit-cab commands need `sneakymisc.elevator`; elevator-floor commands need `sneakymisc.elevatorfloor`. Ordinary control use needs no management permission.
 
 Setup is stored in `plugins/SneakyMisc/elevators.yml`. Legacy `elevator.yml` is ignored; recreate existing elevators. Active elevator travel and passenger information are not persisted. Interrupted or stranded occupants can use `/spawn`. Physically occupied transit cabs are skipped until empty.
+
+## Decorative transit keypads
+
+Place an item frame inside a registered transit cab, look at it within five blocks, and run `/elevatorcab link stone1`. Alternatively, right-click the frame holding an item named `stone1` with `sneakymisc.elevator` permission. The frame displays the usual keypad model but clicking it does nothing during travel. Position it to match the keypads in the compatible elevator floors.
+
+Deleting a transit-cab registration removes its generated doors and clears the doorway; the rest of the built cab remains.
 
 ## Live verification
 
