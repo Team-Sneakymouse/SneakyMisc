@@ -6,21 +6,30 @@ import org.bukkit.Particle
 import org.bukkit.plugin.Plugin
 import org.bukkit.scheduler.BukkitTask
 import kotlin.random.Random
+import kotlin.math.roundToInt
 
 /** One emitter per elevator travel; existing client particles fade naturally after it stops. */
 internal class ElevatorParticles(
     private val plugin: Plugin,
     private val cab: ElevatorCab,
     private val movementY: Double,
+    private val travelTicks: Long,
 ) {
     private var task: BukkitTask? = null
     private var running = false
+    private var elapsedTicks = 0L
 
     fun start() {
         if (running) return
         running = true
+        elapsedTicks = 0L
         task = Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
-            if (!running || cab.players().isEmpty()) return@Runnable
+            if (!running) return@Runnable
+            val progress = (elapsedTicks.toDouble() / travelTicks).coerceIn(0.0, 1.0)
+            // Shorten the flight time over the same path: a steady ramp from initial speed to 4x.
+            val trailDuration = (32.0 / (1.0 + 3.0 * progress)).roundToInt()
+            elapsedTicks += 3
+            if (cab.players().isEmpty()) return@Runnable
             repeat(6) {
                 val alongWall = Random.nextDouble(-2.1, 2.1)
                 val (x, z) = when (Random.nextInt(4)) {
@@ -30,14 +39,14 @@ internal class ElevatorParticles(
                     else -> alongWall to 2.1
                 }
                 if (movementY == 0.0) {
-                    val position = cab.location.clone().add(x, Random.nextDouble(.4, 3.6), z)
+                    val position = cab.location.clone().add(x, Random.nextDouble(.4, 4.6), z)
                     position.world.spawnParticle(Particle.DUST, position, 0, 0.0, 0.0, 0.0, 0.0, PURPLE)
                 } else {
-                    val startY = if (movementY > 0.0) .4 else 3.6
-                    val targetY = if (movementY > 0.0) 3.6 else .4
+                    val startY = if (movementY > 0.0) .4 else 4.6
+                    val targetY = if (movementY > 0.0) 4.6 else .4
                     val position = cab.location.clone().add(x, startY, z)
                     val target = cab.location.clone().add(x, targetY, z)
-                    val trail = Particle.Trail(target, PURPLE.color, Random.nextInt(16, 25))
+                    val trail = Particle.Trail(target, PURPLE.color, trailDuration)
                     position.world.spawnParticle(Particle.TRAIL, position, 1, 0.0, 0.0, 0.0, 0.0, trail)
                 }
             }
@@ -53,7 +62,7 @@ internal class ElevatorParticles(
     fun arrival(destination: ElevatorCab) {
         val restingPoints = List(18) {
             destination.location.clone().add(
-                Random.nextDouble(-2.1, 2.1), Random.nextDouble(1.0, 3.0), Random.nextDouble(-2.1, 2.1),
+                Random.nextDouble(-2.1, 2.1), Random.nextDouble(1.0, 4.0), Random.nextDouble(-2.1, 2.1),
             )
         }
         for (target in restingPoints) {

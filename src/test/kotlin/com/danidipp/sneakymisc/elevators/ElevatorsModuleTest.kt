@@ -202,12 +202,12 @@ class ElevatorsModuleTest {
                 val arrivalParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.takeLast(18)
                 for (particle in arrivalParticles) {
                     val position = particle.arguments[1] as Location
-                    assertTrue(destination.cab.contains(position))
+                    assertParticleBounds(destination.cab, position)
                     assertEquals(Particle.TRAIL, particle.arguments[0])
                     assertEquals(1, particle.arguments[2])
                     assertEquals(listOf(0.0, 0.0, 0.0, 0.0), particle.arguments.slice(3..6))
                     val trail = particle.arguments[7] as Particle.Trail
-                    assertTrue(destination.cab.contains(trail.target))
+                    assertParticleBounds(destination.cab, trail.target)
                     assertEquals(.6, position.y - trail.target.y, .00001) // Same-height travel settles downward.
                     assertEquals(12, trail.duration)
                     assertTrue(trail.color.blue > trail.color.green && trail.color.red > trail.color.green)
@@ -300,19 +300,19 @@ class ElevatorsModuleTest {
                     for (particle in particles) {
                         val cab = module.getTransitCabs().single().cab
                         val position = particle.arguments[1] as Location
-                        assertTrue(cab.contains(position))
+                        assertParticleBounds(cab, position)
                         if (destinationY == 60.0) {
                             assertEquals(Particle.DUST, particle.arguments[0])
                         } else {
                             assertEquals(Particle.TRAIL, particle.arguments[0])
                             val trail = particle.arguments[7] as Particle.Trail
-                            assertTrue(cab.contains(trail.target))
+                            assertParticleBounds(cab, trail.target)
                             assertEquals(position.x, trail.target.x)
                             assertEquals(position.z, trail.target.z)
                             val travelDirection = destinationY.compareTo(60.0)
                             assertEquals(-travelDirection, trail.target.y.compareTo(position.y))
-                            assertEquals(3.2, kotlin.math.abs(trail.target.y - position.y), .00001)
-                            assertTrue(trail.duration in 16..24)
+                            assertEquals(4.2, kotlin.math.abs(trail.target.y - position.y), .00001)
+                            assertEquals(32, trail.duration)
                             assertTrue(trail.color.blue > trail.color.green && trail.color.red > trail.color.green)
                         }
                         assertEquals(listOf(0.0, 0.0, 0.0, 0.0), particle.arguments.slice(3..6))
@@ -328,6 +328,47 @@ class ElevatorsModuleTest {
                 }
             } finally { f.doors.close(); f.directory.deleteRecursively() }
         }
+    }
+
+    @Test fun `transit trails accelerate over the ride within a particle volume one block taller`() {
+        for (movementY in listOf(-1.0, 1.0)) {
+            val f = Fixture()
+            try {
+                mockStatic(Bukkit::class.java).use { bukkit ->
+                    bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                    val cab = ElevatorCab.at(Location(f.world, .5, 60.0, .5))
+                    f.player(cab.location.clone())
+                    val effects = ElevatorParticles(f.plugin, cab, movementY, 330L)
+                    effects.start()
+                    val durations = mutableListOf<Int>()
+                    repeat(111) {
+                        f.particleTicks.single().run()
+                        val frame = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.takeLast(6)
+                        for (particle in frame) {
+                            val start = particle.arguments[1] as Location
+                            val trail = particle.arguments[7] as Particle.Trail
+                            assertParticleBounds(cab, start)
+                            assertParticleBounds(cab, trail.target)
+                            assertEquals(4.6, maxOf(start.y, trail.target.y) - cab.location.y, .00001)
+                            assertEquals(movementY.toInt(), trail.target.y.compareTo(start.y))
+                        }
+                        durations.add((frame.first().arguments[7] as Particle.Trail).duration)
+                    }
+                    assertEquals(32, durations.first())
+                    assertEquals(8, durations.last())
+                    assertTrue(durations.zipWithNext().all { (before, after) -> after <= before })
+                    assertTrue(durations[55] in 12..14)
+                    effects.stop()
+                }
+            } finally { f.doors.close(); f.directory.deleteRecursively() }
+        }
+    }
+
+    private fun assertParticleBounds(cab: ElevatorCab, position: Location) {
+        assertEquals(cab.location.world, position.world)
+        val offset = position.toVector().subtract(cab.location.toVector())
+        assertTrue(offset.x in -2.5..2.5 && offset.z in -2.5..2.5)
+        assertTrue(offset.y >= 0.0 && offset.y < 5.0)
     }
 
     private fun callbackMatcher(): () -> Unit {

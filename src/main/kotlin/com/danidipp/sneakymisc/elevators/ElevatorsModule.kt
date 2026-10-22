@@ -62,7 +62,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             destination.ensureDoors()
             cab.initialize()
             val movementY = -destination.location.y.compareTo(origin.location.y).toDouble()
-            particles[cab] = ElevatorParticles(plugin, cab.cab, movementY)
+            particles[cab] = ElevatorParticles(plugin, cab.cab, movementY, SONG_DURATION + 20)
         }
         override fun release(origin: ElevatorFloor, destination: ElevatorFloor, cab: ElevatorTransitCab) {
             particles.remove(cab)?.stop()
