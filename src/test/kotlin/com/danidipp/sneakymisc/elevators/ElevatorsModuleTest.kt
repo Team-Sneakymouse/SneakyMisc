@@ -198,8 +198,8 @@ class ElevatorsModuleTest {
                 verify(destination).open()
                 verify(f.particleTasks.single()).cancel()
                 val emitted = mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" }
-                assertEquals(24, emitted) // Six during transit and eighteen at arrival.
-                val arrivalParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.takeLast(18)
+                assertEquals(78, emitted) // Six during transit and seventy-two at arrival.
+                val arrivalParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.takeLast(72)
                 for (particle in arrivalParticles) {
                     val position = particle.arguments[1] as Location
                     assertParticleBounds(destination.cab, position)
@@ -208,16 +208,16 @@ class ElevatorsModuleTest {
                     assertEquals(listOf(0.0, 0.0, 0.0, 0.0), particle.arguments.slice(3..6))
                     val trail = particle.arguments[7] as Particle.Trail
                     assertParticleBounds(destination.cab, trail.target)
-                    assertEquals(.6, position.y - trail.target.y, .00001) // Same-height travel settles downward.
-                    assertEquals(12, trail.duration)
+                    assertEquals(4.2 / 3, (position.y - trail.target.y) / trail.duration, .00001) // Same-height travel settles downward.
+                    assertEquals(2, trail.duration)
                     assertTrue(trail.color.blue > trail.color.green && trail.color.red > trail.color.green)
                 }
                 f.particleTicks.single().run() // A stale tick must not emit after arrival.
                 assertEquals(emitted, mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" })
-                verify(f.scheduler).runTaskLater(eq(f.plugin), any(Runnable::class.java), eq(12L))
+                verify(f.scheduler).runTaskLater(eq(f.plugin), any(Runnable::class.java), eq(2L))
                 f.callbacks.last().run()
                 val restingParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.drop(emitted)
-                assertEquals(18, restingParticles.size)
+                assertEquals(72, restingParticles.size)
                 for ((arrival, resting) in arrivalParticles.zip(restingParticles)) {
                     assertEquals((arrival.arguments[7] as Particle.Trail).target, resting.arguments[1])
                     assertEquals(Particle.DUST, resting.arguments[0])
@@ -341,9 +341,12 @@ class ElevatorsModuleTest {
                     val effects = ElevatorParticles(f.plugin, cab, movementY, 330L)
                     effects.start()
                     val durations = mutableListOf<Int>()
+                    val counts = mutableListOf<Int>()
                     repeat(111) {
+                        val before = mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" }
                         f.particleTicks.single().run()
-                        val frame = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.takeLast(6)
+                        val frame = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.drop(before)
+                        counts.add(frame.size)
                         for (particle in frame) {
                             val start = particle.arguments[1] as Location
                             val trail = particle.arguments[7] as Particle.Trail
@@ -354,10 +357,15 @@ class ElevatorsModuleTest {
                         }
                         durations.add((frame.first().arguments[7] as Particle.Trail).duration)
                     }
+                    assertEquals(6, counts.first())
+                    assertEquals(72, counts.last())
+                    assertTrue(counts.zipWithNext().all { (before, after) -> after >= before })
+                    assertEquals(23, counts[55])
+                    assertTrue(counts.last() - counts[55] > counts[55] - counts.first())
                     assertEquals(32, durations.first())
-                    assertEquals(8, durations.last())
+                    assertEquals(3, durations.last())
                     assertTrue(durations.zipWithNext().all { (before, after) -> after <= before })
-                    assertTrue(durations[55] in 12..14)
+                    assertEquals(9, durations[55])
                     effects.stop()
                 }
             } finally { f.doors.close(); f.directory.deleteRecursively() }
