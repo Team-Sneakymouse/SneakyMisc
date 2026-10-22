@@ -27,32 +27,39 @@ internal class ElevatorParticles(
             if (!running) return@Runnable
             val progress = (elapsedTicks.toDouble() / travelTicks).coerceIn(0.0, 1.0)
             // Accelerate increasingly hard until arrival; no easing out before the sudden stop.
-            val speedMultiplier = 1.0 + (END_SPEED_MULTIPLIER - 1) * progress * progress
-            val trailDuration = (START_DURATION / speedMultiplier).roundToInt()
-            val count = if (movementY == 0.0) START_COUNT else (START_COUNT * speedMultiplier).roundToInt()
-            elapsedTicks += 3
+            val acceleration = progress * progress
+            val speed = 1.0 / START_DURATION + (1.0 / END_DURATION - 1.0 / START_DURATION) * acceleration
+            val fullFlightDuration = 1.0 / speed
+            val emission = if (movementY == 0.0) START_COUNT.toDouble() else START_COUNT + (END_COUNT - START_COUNT) * acceleration
+            // Small variations and one-tick emission avoid synchronized sheets around the walls.
+            val count = (emission * Random.nextDouble(.75, 1.25)).roundToInt().coerceAtLeast(1)
+            elapsedTicks++
             if (cab.players().isEmpty()) return@Runnable
             repeat(count) {
-                val alongWall = Random.nextDouble(-2.1, 2.1)
+                val alongWall = Random.nextDouble(-2.2, 2.2)
+                val wall = Random.nextDouble(1.8, 2.2)
                 val (x, z) = when (Random.nextInt(4)) {
-                    0 -> -2.1 to alongWall
-                    1 -> 2.1 to alongWall
-                    2 -> alongWall to -2.1
-                    else -> alongWall to 2.1
+                    0 -> -wall to alongWall
+                    1 -> wall to alongWall
+                    2 -> alongWall to -wall
+                    else -> alongWall to wall
                 }
                 if (movementY == 0.0) {
                     val position = cab.location.clone().add(x, Random.nextDouble(MIN_HEIGHT, MAX_HEIGHT), z)
                     position.world.spawnParticle(Particle.DUST, position, 0, 0.0, 0.0, 0.0, 0.0, PURPLE)
                 } else {
-                    val startY = if (movementY > 0.0) MIN_HEIGHT else MAX_HEIGHT
+                    val fraction = Random.nextDouble(.35, 1.0)
+                    val distance = (MAX_HEIGHT - MIN_HEIGHT) * fraction
                     val targetY = if (movementY > 0.0) MAX_HEIGHT else MIN_HEIGHT
+                    val startY = targetY - movementY * distance
                     val position = cab.location.clone().add(x, startY, z)
                     val target = cab.location.clone().add(x, targetY, z)
-                    val trail = Particle.Trail(target, PURPLE.color, trailDuration)
+                    val duration = (fullFlightDuration * fraction).roundToInt().coerceAtLeast(1)
+                    val trail = Particle.Trail(target, PURPLE.color, duration)
                     position.world.spawnParticle(Particle.TRAIL, position, 1, 0.0, 0.0, 0.0, 0.0, trail)
                 }
             }
-        }, 0L, 3L)
+        }, 0L, 1L)
     }
 
     fun stop() {
@@ -65,7 +72,7 @@ internal class ElevatorParticles(
         val direction = if (movementY == 0.0) -1.0 else movementY
         val minimumTargetY = if (direction > 0.0) MIN_HEIGHT + ARRIVAL_DISTANCE else MIN_HEIGHT
         val maximumTargetY = if (direction > 0.0) MAX_HEIGHT else MAX_HEIGHT - ARRIVAL_DISTANCE
-        val restingPoints = List(START_COUNT * END_SPEED_MULTIPLIER) {
+        val restingPoints = List(ARRIVAL_COUNT) {
             destination.location.clone().add(
                 Random.nextDouble(-2.1, 2.1), Random.nextDouble(minimumTargetY, maximumTargetY), Random.nextDouble(-2.1, 2.1),
             )
@@ -88,12 +95,12 @@ internal class ElevatorParticles(
     companion object {
         private const val MIN_HEIGHT = .4
         private const val MAX_HEIGHT = 4.6
-        private const val START_DURATION = 32.0
-        private const val END_SPEED_MULTIPLIER = 12
-        private const val START_COUNT = 6
+        private const val START_DURATION = 128.0
+        private const val END_DURATION = 3
+        private const val START_COUNT = 2
+        private const val END_COUNT = 48
+        private const val ARRIVAL_COUNT = END_COUNT * 3
         private const val ARRIVAL_DURATION = 2
-        // Match the actual tick-rounded transit speed, rather than the unrounded target speed.
-        private val END_DURATION = (START_DURATION / END_SPEED_MULTIPLIER).roundToInt()
         private val ARRIVAL_DISTANCE = (MAX_HEIGHT - MIN_HEIGHT) / END_DURATION * ARRIVAL_DURATION
         private val PURPLE = Particle.DustOptions(Color.fromRGB(180, 75, 255), .7f)
     }

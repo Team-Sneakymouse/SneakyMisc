@@ -176,6 +176,7 @@ class ElevatorsModuleTest {
                 closed!!()
                 assertEquals(1, f.particleTicks.size)
                 f.particleTicks.single().run()
+                val transitCount = mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" }
                 assertEquals(100.5, incoming.location.x)
                 // A summoned account is discovered at arrival without registration or music.
                 val summoned = f.player(incoming.location.clone().add(1.0, 0.0, 0.0))
@@ -198,8 +199,8 @@ class ElevatorsModuleTest {
                 verify(destination).open()
                 verify(f.particleTasks.single()).cancel()
                 val emitted = mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" }
-                assertEquals(78, emitted) // Six during transit and seventy-two at arrival.
-                val arrivalParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.takeLast(72)
+                assertEquals(transitCount + 144, emitted)
+                val arrivalParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.takeLast(144)
                 for (particle in arrivalParticles) {
                     val position = particle.arguments[1] as Location
                     assertParticleBounds(destination.cab, position)
@@ -217,7 +218,7 @@ class ElevatorsModuleTest {
                 verify(f.scheduler).runTaskLater(eq(f.plugin), any(Runnable::class.java), eq(2L))
                 f.callbacks.last().run()
                 val restingParticles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.drop(emitted)
-                assertEquals(72, restingParticles.size)
+                assertEquals(144, restingParticles.size)
                 for ((arrival, resting) in arrivalParticles.zip(restingParticles)) {
                     assertEquals((arrival.arguments[7] as Particle.Trail).target, resting.arguments[1])
                     assertEquals(Particle.DUST, resting.arguments[0])
@@ -296,7 +297,8 @@ class ElevatorsModuleTest {
                     closed!!()
                     f.particleTicks.single().run()
                     val particles = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }
-                    assertEquals(6, particles.size)
+                    assertTrue(particles.size in 1..3)
+                    val emitted = particles.size
                     for (particle in particles) {
                         val cab = module.getTransitCabs().single().cab
                         val position = particle.arguments[1] as Location
@@ -311,20 +313,22 @@ class ElevatorsModuleTest {
                             assertEquals(position.z, trail.target.z)
                             val travelDirection = destinationY.compareTo(60.0)
                             assertEquals(-travelDirection, trail.target.y.compareTo(position.y))
-                            assertEquals(4.2, kotlin.math.abs(trail.target.y - position.y), .00001)
-                            assertEquals(32, trail.duration)
+                            val distance = kotlin.math.abs(trail.target.y - position.y)
+                            assertTrue(distance in 1.47..4.2)
+                            assertTrue(trail.duration in 45..128)
+                            assertEquals(4.2 / 128, distance / trail.duration, .0005)
                             assertTrue(trail.color.blue > trail.color.green && trail.color.red > trail.color.green)
                         }
                         assertEquals(listOf(0.0, 0.0, 0.0, 0.0), particle.arguments.slice(3..6))
                     }
                     player.teleport(origin.location)
                     f.particleTicks.single().run()
-                    assertEquals(6, mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" })
+                    assertEquals(emitted, mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" })
                     module.onDisable(org.bukkit.event.server.PluginDisableEvent(f.plugin))
                     verify(f.particleTasks.single()).cancel()
                     player.teleport(module.getTransitCabs().single().cab.location)
                     f.particleTicks.single().run()
-                    assertEquals(6, mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" })
+                    assertEquals(emitted, mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" })
                 }
             } finally { f.doors.close(); f.directory.deleteRecursively() }
         }
@@ -340,32 +344,34 @@ class ElevatorsModuleTest {
                     f.player(cab.location.clone())
                     val effects = ElevatorParticles(f.plugin, cab, movementY, 330L)
                     effects.start()
-                    val durations = mutableListOf<Int>()
+                    val speeds = mutableListOf<Double>()
                     val counts = mutableListOf<Int>()
-                    repeat(111) {
+                    val startingHeights = mutableSetOf<Double>()
+                    repeat(331) {
                         val before = mockingDetails(f.world).invocations.count { it.method.name == "spawnParticle" }
                         f.particleTicks.single().run()
                         val frame = mockingDetails(f.world).invocations.filter { it.method.name == "spawnParticle" }.drop(before)
                         counts.add(frame.size)
-                        for (particle in frame) {
+                        val frameSpeeds = frame.map { particle ->
                             val start = particle.arguments[1] as Location
                             val trail = particle.arguments[7] as Particle.Trail
                             assertParticleBounds(cab, start)
                             assertParticleBounds(cab, trail.target)
-                            assertEquals(4.6, maxOf(start.y, trail.target.y) - cab.location.y, .00001)
                             assertEquals(movementY.toInt(), trail.target.y.compareTo(start.y))
+                            startingHeights.add(start.y)
+                            kotlin.math.abs(trail.target.y - start.y) / trail.duration
                         }
-                        durations.add((frame.first().arguments[7] as Particle.Trail).duration)
+                        speeds.add(frameSpeeds.average())
                     }
-                    assertEquals(6, counts.first())
-                    assertEquals(72, counts.last())
-                    assertTrue(counts.zipWithNext().all { (before, after) -> after >= before })
-                    assertEquals(23, counts[55])
-                    assertTrue(counts.last() - counts[55] > counts[55] - counts.first())
-                    assertEquals(32, durations.first())
-                    assertEquals(3, durations.last())
-                    assertTrue(durations.zipWithNext().all { (before, after) -> after <= before })
-                    assertEquals(9, durations[55])
+                    assertTrue(counts.first() in 1..3)
+                    assertTrue(counts.last() in 36..60)
+                    assertTrue(counts.takeLast(30).sum() > counts.take(30).sum() * 10)
+                    assertTrue(speeds.first() < .034) // At least four times slower than the old opening drift.
+                    assertTrue(speeds.last() > 1.0)
+                    assertTrue(speeds[165] > speeds.first() * 5)
+                    assertTrue(speeds.last() - speeds[165] > speeds[165] - speeds.first())
+                    assertTrue(startingHeights.size > 100) // Spawn phases must not form uniform horizontal sheets.
+                    verify(f.scheduler).runTaskTimer(eq(f.plugin), any(Runnable::class.java), eq(0L), eq(1L))
                     effects.stop()
                 }
             } finally { f.doors.close(); f.directory.deleteRecursively() }
