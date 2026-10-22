@@ -20,7 +20,7 @@ Place transit cabs beyond the configured proximity voice range of **both ordinar
 ## Using an elevator
 
 - Call controls open or reopen doors. Reopening while a departure closes cancels that departure.
-- Select tens first, then ones: `0`, `5` selects elevator floor 5. The second digit evaluates automatically. B and G select immediately; Clear resets partial input.
+- Select tens first, then ones: `0`, `5` selects elevator floor 5. The second digit evaluates automatically. The bottom row is 0, G, B. B and G select immediately. Reopen the keypad to reset partial input.
 - The first valid destination selection starts departure for everyone inside when doors finish closing.
 - During elevator travel, purple trail particles move between explicit endpoints along the transit cab walls opposite the direction between departure and destination heights. The particle volume extends one block above the cab interior. Trails accelerate quadratically throughout travel, without slowing before the abrupt arrival. Flight time drops from 32 to 3 ticks, with emission increasing from 6 to 72 particles per pulse to maintain density. Same-height travel uses stationary sparkles. On arrival, 72 purple trails move a short distance through the destination cab at the final transit speed, then leave a brief stationary shimmer at their endpoints.
 - Elevator music starts immediately, follows each boarding account, and finishes naturally even after arrival or teleporting away. Elevator travel keeps the existing timing. Occupants who teleport away stay away; accounts summoned into the transit cab arrive with its current occupants and hear no music.

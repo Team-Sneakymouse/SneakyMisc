@@ -1,7 +1,6 @@
 package com.danidipp.sneakymisc.elevators
 
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.SoundCategory
@@ -21,13 +20,7 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
     override fun getInventory(): Inventory = contents
 
     init {
-        contents.setItem(8, getNumber(3046))
-        val slots = listOf(12, 13, 14, 21, 22, 23, 30, 31, 32)
-        slots.forEachIndexed { index, slot -> contents.setItem(slot, getNumber(6001 + index, (index + 1).toString())) }
-        contents.setItem(40, getNumber(6000, "0"))
-        contents.setItem(39, getNumber(5996, "Basement"))
-        contents.setItem(48, getNumber(5997, "Ground"))
-        contents.setItem(41, button(Material.BARRIER, "Clear selection"))
+        contents.setItem(0, getNumber(3046))
         renderInput()
     }
 
@@ -37,11 +30,8 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
     }
 
     private fun renderInput() {
-        contents.setItem(0, button(Material.PAPER, if (input.tens == null) "Enter tens digit first" else "Enter ones digit"))
-        contents.setItem(4, input.tens?.let { getNumber(6000 + it * 10, "Tens: $it") }
-            ?: button(Material.LIME_STAINED_GLASS_PANE, "Tens — enter first digit"))
-        contents.setItem(5, input.ones?.let { getNumber(6000 + it, "Ones: $it") }
-            ?: button(if (input.tens == null) Material.GRAY_STAINED_GLASS_PANE else Material.LIME_STAINED_GLASS_PANE, "Ones — enter second digit"))
+        contents.setItem(4, input.tens?.let { getNumber(6000 + it * 10) })
+        contents.setItem(5, input.ones?.let { getNumber(6000 + it) })
     }
 
     private fun click(player: Player, slot: Int) {
@@ -51,17 +41,16 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
             Bukkit.getScheduler().runTask(module.plugin, Runnable { if (player.openInventory.topInventory.holder === this) player.closeInventory() })
             return
         }
-        player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
         val label = when (slot) {
             12, 13, 14 -> input.digit(slot - 11)
             21, 22, 23 -> input.digit(slot - 17)
             30, 31, 32 -> input.digit(slot - 23)
-            40 -> input.digit(0)
-            39 -> "B"
-            48 -> "G"
-            41 -> { input.reset(); renderInput(); return }
+            39 -> input.digit(0)
+            40 -> "G"
+            41 -> "B"
             else -> return
         }
+        player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
         renderInput()
         if (label == null) return
         pending = true
@@ -76,8 +65,8 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
             } else {
                 player.sendMessage(error)
                 player.playSound(player, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
-                contents.setItem(4, getNumber(5998, error))
-                contents.setItem(5, getNumber(5998, error))
+                contents.setItem(4, getNumber(5998))
+                contents.setItem(5, getNumber(5998))
                 Bukkit.getScheduler().runTaskLater(module.plugin, Runnable {
                     if (valid) { input.reset(); pending = false; renderInput() }
                 }, 15)
@@ -86,14 +75,11 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
     }
 
     companion object {
-        fun getNumber(model: Int, label: String = " "): ItemStack = ItemStack(Material.JIGSAW).apply {
+        fun getNumber(model: Int): ItemStack = ItemStack(Material.JIGSAW).apply {
             itemMeta = itemMeta.apply {
                 setCustomModelData(model)
-                displayName(Component.text(label, NamedTextColor.WHITE))
+                isHideTooltip = true
             }
-        }
-        private fun button(material: Material, label: String) = ItemStack(material).apply {
-            itemMeta = itemMeta.apply { displayName(Component.text(label, NamedTextColor.WHITE)) }
         }
 
         fun listener(module: ElevatorsModule) = object : Listener {

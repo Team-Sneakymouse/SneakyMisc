@@ -79,7 +79,7 @@ class ElevatorGuiTest {
     }
 
     @Test fun `two digit input evaluates automatically after event and closes on success`() = scenario { f ->
-        f.click(40) // 0
+        f.click(39) // 0
         assertTrue(f.queued.isEmpty())
         f.click(22) // 5
         verify(f.module, never()).select(f.player, f.floor, "5")
@@ -89,26 +89,46 @@ class ElevatorGuiTest {
     }
 
     @Test fun `arrival or manual close invalidates an already queued selection`() = scenario { f ->
-        f.click(40)
+        f.click(39)
         f.click(22)
         f.close()
         f.next()
         verify(f.module, never()).select(f.player, f.floor, "5")
     }
 
-    @Test fun `clear requires two new digits and dedicated ground needs only one click`() = scenario { f ->
-        f.click(30) // 7
-        f.click(41) // clear
-        f.click(40) // 0 is tens again
-        assertTrue(f.queued.isEmpty())
-        f.click(48) // G is immediate
-        f.next()
-        verify(f.module).select(f.player, f.floor, "G")
+    @Test fun `ground and basement use the new bottom row and ignore old ground slot`() {
+        scenario { f ->
+            f.click(48) // Previous G slot is now inactive.
+            assertTrue(f.queued.isEmpty())
+            f.click(30) // Partial numeric input must not prevent G selection.
+            f.click(40)
+            f.next()
+            verify(f.module).select(f.player, f.floor, "G")
+        }
+        scenario { f ->
+            f.click(41) // Previous clear slot is now B.
+            f.next()
+            verify(f.module).select(f.player, f.floor, "B")
+        }
+    }
+
+    @Test fun `background stays in slot zero with no button models names or tooltips`() = scenario { f ->
+        val placed = mockingDetails(f.inventory).invocations.filter { it.method.name == "setItem" }
+        assertEquals(setOf(0, 4, 5), placed.map { it.arguments[0] }.toSet())
+        val background = placed.single { it.arguments[0] == 0 }.arguments[1] as ItemStack
+        verify(background.itemMeta).setCustomModelData(3046)
+        verify(background.itemMeta).setHideTooltip(true)
+        assertTrue(mockingDetails(background.itemMeta).invocations.none {
+            it.method.name in setOf("displayName", "customName") && it.arguments.isNotEmpty()
+        })
+        f.click(39)
+        f.click(22)
+        verify(f.inventory, times(1)).setItem(eq(0), any(ItemStack::class.java))
     }
 
     @Test fun `invalid selection resets but its delayed error cannot revive a closed GUI`() = scenario { f ->
         `when`(f.module.select(f.player, f.floor, "B")).thenReturn("That floor does not exist.")
-        f.click(39)
+        f.click(41)
         f.next()
         verify(f.player).sendMessage("That floor does not exist.")
         f.close()
