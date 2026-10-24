@@ -229,6 +229,30 @@ class ElevatorsModuleTest {
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
+    @Test fun `restricted floors need the selector's permission and persist`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                val origin = f.floor(module, "1", .5)
+                val vip = f.floor(module, "2", 20.5)
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                module.setRestricted(vip, true)
+                val guest = f.player(origin.location.clone())
+                val allowed = f.player(origin.location.clone())
+                `when`(allowed.hasPermission("sneakymisc.elevator.floor.tower-2")).thenReturn(true)
+                assertEquals("You do not have access to that floor.", module.select(guest, origin, "2"))
+                assertNull(module.select(allowed, origin, "2"))
+                assertTrue(module.travel.isDeparting(origin))
+                val saved = YamlConfiguration.loadConfiguration(f.directory.resolve("elevators.yml"))
+                assertEquals(listOf("2"), saved.getStringList("elevators.tower.restricted-floors"))
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
     @Test fun `transit doors initialize on creation and reload and are removed on deletion`() {
         val f = Fixture()
         try {

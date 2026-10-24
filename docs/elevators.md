@@ -24,6 +24,7 @@ Place transit cabs beyond the configured proximity voice range of **both ordinar
 - The first valid destination selection starts departure for everyone inside when doors finish closing.
 - During elevator travel, purple trail particles move between explicit endpoints along the transit cab walls opposite the direction between departure and destination heights. The particle volume extends one block above the cab interior. Trails accelerate quadratically throughout travel, without slowing before the abrupt arrival. The opening drift is four times slower, with full-height flight time dropping from 128 to 3 ticks. Emission runs every tick and increases from about 2 to 48 particles per tick, with randomized heights, wall offsets, and counts to avoid synchronized sheets. Same-height travel uses stationary sparkles. On arrival, 144 purple trails move a short distance through the destination cab at the final transit speed, then leave a brief stationary shimmer at their endpoints.
 - Elevator music starts immediately, follows each boarding account, and finishes naturally even after arrival or teleporting away. Elevator travel keeps the existing timing. Occupants who teleport away stay away; accounts summoned into the transit cab arrive with its current occupants and hear no music.
+- Restricted floors (`/elevatorfloor restrict <name-floor> true`) can only be selected by players with `sneakymisc.elevator.floor.<name-floor>`. Only the selector needs the permission: the cab takes everyone inside to the destination, even if the selector leaves before the doors finish closing. Restrictions persist in `elevators.yml` under `restricted-floors`.
 - Arrivals into an occupied/open elevator floor happen immediately. They cancel any departure still closing there and interrupt keypad users inside with half a heart of damage and an amethyst sparkle sound. Damage is allowed to be lethal.
 - Compatible transit cabs are shared by every elevator with the same style. If all are reserved or physically occupied, selection shows an at-capacity message; calls still work. A missing style pool shows a setup error instead.
 - An empty transit cab remains reserved until its original arrival time. With nobody arriving, it does not interrupt the destination.
@@ -38,6 +39,7 @@ Place transit cabs beyond the configured proximity voice range of **both ordinar
 | `/elevator call <name-floor>` | Open an elevator floor, cancelling an uncommitted departure |
 | `/elevatorfloor open <name-floor>` | Same as call |
 | `/elevatorfloor close <name-floor>` | Cancel an uncommitted departure and close doors |
+| `/elevatorfloor restrict <name-floor> <true\|false>` | Require (or stop requiring) `sneakymisc.elevator.floor.<name-floor>` to select the floor |
 | `/elevatorfloor delete <name-floor>` | Remove an inactive elevator floor and its animated doors |
 | `/elevatorcab link <name>` | Link an inside item frame as a decorative, nonfunctional keypad |
 | `/elevatorcab list` | List transit cabs, styles, and locations |

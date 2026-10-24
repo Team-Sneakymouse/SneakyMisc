@@ -122,6 +122,9 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
                     requireAvailable(cab)
                     elevator.addFloor(ElevatorFloor("$name-$label", cab, elevator))
                 }
+                for (label in section.getStringList("restricted-floors")) {
+                    if (elevator.getFloor("$name-$label") != null) elevator.setRestricted("$name-$label", true)
+                }
             }
             for (name in config.getConfigurationSection("transit-cabs")?.getKeys(false).orEmpty()) {
                 requireName(name)
@@ -248,6 +251,10 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     internal fun select(player: Player, floor: ElevatorFloor, label: String): String? {
         if (stopped) return "Elevators are currently stopped."
         val destination = floor.elevator.getFloor("${floor.elevator.name}-$label") ?: return "That floor does not exist."
+        // Only the selector needs access; everyone in the cab rides along when it departs.
+        if (floor.elevator.isRestricted(destination.id) && !player.hasPermission(floorPermission(destination))) {
+            return "You do not have access to that floor."
+        }
         return when (travel.start(floor, destination)) {
             ElevatorDepartureResult.STARTED, ElevatorDepartureResult.SAME_FLOOR -> null
             ElevatorDepartureResult.BUSY -> "This cab is already departing."
@@ -255,6 +262,13 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             ElevatorDepartureResult.AT_CAPACITY -> "This elevator is at capacity."
             ElevatorDepartureResult.FAILED -> "Elevator travel could not start."
         }
+    }
+
+    fun floorPermission(floor: ElevatorFloor): String = "sneakymisc.elevator.floor.${floor.id}"
+
+    fun setRestricted(floor: ElevatorFloor, restricted: Boolean) {
+        floor.elevator.setRestricted(floor.id, restricted)
+        saveConfig()
     }
 
     fun link(frame: ItemFrame, floor: ElevatorFloor): String {
@@ -283,6 +297,9 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         for (elevator in elevators.values) {
             config.set("elevators.${elevator.name}.style", elevator.style)
             for (floor in elevator.getFloors()) config.set("elevators.${elevator.name}.floors.${floor.id.substringAfterLast('-')}", floor.location)
+            if (elevator.restrictedFloorIds().isNotEmpty()) {
+                config.set("elevators.${elevator.name}.restricted-floors", elevator.restrictedFloorIds().map { it.substringAfterLast('-') })
+            }
         }
         for (cab in transitCabs.values) {
             config.set("transit-cabs.${cab.name}.style", cab.style)

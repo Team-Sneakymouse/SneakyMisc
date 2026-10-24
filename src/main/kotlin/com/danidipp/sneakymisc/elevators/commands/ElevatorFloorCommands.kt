@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.elevators.commands
 
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
+import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.tree.LiteralCommandNode
 import io.papermc.paper.command.brigadier.CommandSourceStack
@@ -11,7 +12,7 @@ internal class ElevatorFloorCommands(private val module: ElevatorsModule, privat
     fun build(): LiteralCommandNode<CommandSourceStack> {
         val root = Commands.literal("elevatorfloor")
             .requires { it.sender.hasPermission("sneakymisc.elevatorfloor") }
-            .executes { utils.fail(it, "Usage: /elevatorfloor <create|delete|open|close|link> <name-floor>") }
+            .executes { utils.fail(it, "Usage: /elevatorfloor <create|delete|open|close|link|restrict> <name-floor>") }
         root.then(Commands.literal("create").then(Commands.argument("floor", StringArgumentType.word()).executes { context ->
             val player = context.requirePlayer("Only players can create elevator floors") ?: return@executes 0
             utils.attempt(context) {
@@ -32,6 +33,15 @@ internal class ElevatorFloorCommands(private val module: ElevatorsModule, privat
                 }
             }))
         }
+        root.then(Commands.literal("restrict").then(Commands.argument("floor", StringArgumentType.word()).suggests(utils.floorSuggestions)
+            .then(Commands.argument("restricted", BoolArgumentType.bool()).executes { context ->
+                utils.attempt(context) {
+                    val floor = requireNotNull(module.getFloor(context.stringArg("floor"))) { "Elevator floor not found" }
+                    val restricted = BoolArgumentType.getBool(context, "restricted")
+                    module.setRestricted(floor, restricted)
+                    if (restricted) "${floor.id} now requires ${module.floorPermission(floor)}" else "${floor.id} is no longer restricted"
+                }
+            })))
         root.then(Commands.literal("link").then(Commands.argument("floor", StringArgumentType.word()).suggests(utils.floorSuggestions)
             .executes { context ->
                 val player = context.requirePlayer("Only players can link controls") ?: return@executes 0
