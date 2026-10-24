@@ -75,7 +75,8 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             }
         }
         override fun closeSelections(floor: ElevatorFloor, interrupt: Boolean) {
-            val selected = guis.filter { it.floor === floor }
+            val (confirmed, selected) = guis.filter { it.floor === floor }.partition { !interrupt && it.pending }
+            confirmed.forEach { it.closeLater() }
             val viewers = selected.flatMap { it.inventory.viewers.toList() }.filterIsInstance<Player>().distinctBy { it.uniqueId }
             selected.forEach { it.invalidate() }
             for (viewer in viewers) {
@@ -245,7 +246,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     fun close(floor: ElevatorFloor) { travel.cancelDeparture(floor); floor.close() }
 
     internal fun select(player: Player, floor: ElevatorFloor, label: String): String? {
-        if (stopped || !floor.cab.contains(player.location)) return "Stand inside this elevator to select a floor."
+        if (stopped) return "Elevators are currently stopped."
         val destination = floor.elevator.getFloor("${floor.elevator.name}-$label") ?: return "That floor does not exist."
         return when (travel.start(floor, destination)) {
             ElevatorDepartureResult.STARTED, ElevatorDepartureResult.SAME_FLOOR -> null

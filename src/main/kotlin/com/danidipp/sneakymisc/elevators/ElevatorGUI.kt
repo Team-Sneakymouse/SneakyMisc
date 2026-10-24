@@ -16,7 +16,9 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
     private val contents = Bukkit.createInventory(this, 54, Component.text("Elevator ${floor.elevator.name}"))
     private val input = ElevatorFloorInput()
     private var valid = true
-    private var pending = false
+    internal var pending = false
+        private set
+    private var closing = false
     override fun getInventory(): Inventory = contents
 
     init {
@@ -60,8 +62,7 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
             val error = module.select(player, floor, label)
             if (error == null) {
                 player.playSound(player, "lom:cute.get", SoundCategory.MASTER, .5f, 1f)
-                invalidate()
-                if (player.openInventory.topInventory.holder === this) player.closeInventory()
+                closeLater()
             } else {
                 player.sendMessage(error)
                 player.playSound(player, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
@@ -74,7 +75,21 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
         })
     }
 
+    /** Locks the GUI right away but keeps it open briefly so the complete floor selection stays readable. */
+    internal fun closeLater() {
+        invalidate()
+        if (closing) return
+        closing = true
+        Bukkit.getScheduler().runTaskLater(module.plugin, Runnable {
+            for (viewer in contents.viewers.toList()) {
+                if (viewer is Player && viewer.openInventory.topInventory.holder === this) viewer.closeInventory()
+            }
+        }, CONFIRM_DELAY_TICKS)
+    }
+
     companion object {
+        private const val CONFIRM_DELAY_TICKS = 20L
+
         fun getNumber(model: Int): ItemStack = ItemStack(Material.JIGSAW).apply {
             itemMeta = itemMeta.apply {
                 setCustomModelData(model)

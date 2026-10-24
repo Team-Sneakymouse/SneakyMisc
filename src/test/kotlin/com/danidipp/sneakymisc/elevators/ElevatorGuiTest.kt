@@ -34,12 +34,14 @@ class ElevatorGuiTest {
         `when`(view.topInventory).thenReturn(inventory)
         `when`(view.player).thenReturn(player)
         `when`(inventory.size).thenReturn(54)
+        `when`(inventory.viewers).thenReturn(listOf(player))
         val queued = mutableListOf<Runnable>()
         `when`(scheduler.runTask(eq(plugin), any(Runnable::class.java))).thenAnswer {
             queued.add(it.getArgument(1)); mock(BukkitTask::class.java)
         }
+        val delays = mutableListOf<Long>()
         `when`(scheduler.runTaskLater(eq(plugin), any(Runnable::class.java), anyLong())).thenAnswer {
-            queued.add(it.getArgument(1)); mock(BukkitTask::class.java)
+            delays.add(it.getArgument(2)); queued.add(it.getArgument(1)); mock(BukkitTask::class.java)
         }
         mockStatic(Bukkit::class.java).use { bukkit ->
             bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(scheduler)
@@ -50,7 +52,7 @@ class ElevatorGuiTest {
                 val gui = ElevatorGUI(module, floor)
                 `when`(inventory.holder).thenReturn(gui)
                 val listener = ElevatorGUI.listener(module)
-                action(Fixture(module, floor, gui, player, inventory, view, listener, queued))
+                action(Fixture(module, floor, gui, player, inventory, view, listener, queued, delays))
             }
         }
     }
@@ -64,6 +66,7 @@ class ElevatorGuiTest {
         val view: InventoryView,
         val listener: org.bukkit.event.Listener,
         val queued: MutableList<Runnable>,
+        val delays: List<Long>,
     ) {
         fun click(slot: Int) {
             `when`(view.getInventory(slot)).thenReturn(inventory)
@@ -78,14 +81,36 @@ class ElevatorGuiTest {
         fun next() = queued.removeAt(0).run()
     }
 
-    @Test fun `two digit input evaluates automatically after event and closes on success`() = scenario { f ->
+    @Test fun `two digit input evaluates automatically after the click event`() = scenario { f ->
         f.click(39) // 0
         assertTrue(f.queued.isEmpty())
         f.click(22) // 5
         verify(f.module, never()).select(f.player, f.floor, "5")
         f.next()
         verify(f.module).select(f.player, f.floor, "5")
+    }
+
+    @Test fun `successful selection locks the GUI but closes it after one second`() = scenario { f ->
+        f.click(39)
+        f.click(22)
+        f.next()
+        verify(f.module).select(f.player, f.floor, "5")
+        verify(f.player, never()).closeInventory()
+        assertEquals(listOf(20L), f.delays)
+        f.click(12)
+        assertEquals(1, f.queued.size)
+        f.next()
         verify(f.player).closeInventory()
+    }
+
+    @Test fun `manual close during the delay is harmless`() = scenario { f ->
+        f.click(39)
+        f.click(22)
+        f.next()
+        f.close()
+        `when`(f.view.topInventory).thenReturn(mock(Inventory::class.java))
+        f.next()
+        verify(f.player, never()).closeInventory()
     }
 
     @Test fun `arrival or manual close invalidates an already queued selection`() = scenario { f ->
