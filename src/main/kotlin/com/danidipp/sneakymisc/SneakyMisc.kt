@@ -15,7 +15,6 @@ import com.danidipp.sneakymisc.forceloadregion.ForceLoadRegionModule
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
 import com.danidipp.sneakymisc.lomarchive.LomArchiveModule
 import com.danidipp.sneakymisc.magicspells.MagicSpellsModule
-import com.danidipp.sneakymisc.metaoverlayhelper.MetaOverlayHelper
 import com.danidipp.sneakymisc.nophysics.NoPhysicsModule
 import com.danidipp.sneakymisc.paintings.PaintingsModule
 import com.danidipp.sneakymisc.phonebook.PhonebookModule
@@ -46,7 +45,6 @@ class SneakyMisc : JavaPlugin() {
         // Kobold wraps the renderer installed by chat when both mechanics are enabled.
         if (dependenciesAvailable(KoboldModule.deps)) registerModule(KoboldModule(this))
         if (dependenciesAvailable(ElevatorsModule.deps))        registerModule(ElevatorsModule(logger))
-        if (dependenciesAvailable(MetaOverlayHelper.deps))      registerModule(MetaOverlayHelper(logger))
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
         if (dependenciesAvailable(DBSyncModule.deps))           registerModule(DBSyncModule(logger))
         if (dependenciesAvailable(RegistrationModule.deps))     registerModule(RegistrationModule(logger))
