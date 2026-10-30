@@ -128,7 +128,7 @@ class ElevatorsModuleTest {
                 }.use {
                     val module = ElevatorsModule(f.logger, f.plugin)
                     listOf("1", "B", "G", "tower").forEach { module.createElevator(it, "stone") }
-                    val ids = listOf("1-1", "B-B", "G-G", "tower-0", "tower-99", "tower-B", "tower-G")
+                    val ids = listOf("1-2", "B-B1", "G-G", "tower-2", "tower-99", "tower-B9", "tower-G")
                     ids.forEachIndexed { index, id ->
                         module.createFloor(id, Location(f.world, index * 10.0 + .5, 60.0, .5))
                     }
@@ -138,6 +138,88 @@ class ElevatorsModuleTest {
                         val elevator = loaded.getElevator(id.substringBefore('-'))!!
                         assertEquals(id, elevator.getFloor("${elevator.name}-${id.substringAfter('-')}")?.id)
                     }
+                }
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    private fun Fixture.floorConstruction() = mockConstruction(ElevatorFloor::class.java) { floor, context ->
+        val id = context.arguments()[0] as String
+        val cab = context.arguments()[1] as ElevatorCab
+        `when`(floor.id).thenReturn(id)
+        `when`(floor.cab).thenReturn(cab)
+        `when`(floor.location).thenReturn(cab.location)
+    }
+
+    @Test fun `floor creation rejects floor 0 plain B and B0 and stores aliases canonically`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                f.floorConstruction().use {
+                    val module = ElevatorsModule(f.logger, f.plugin)
+                    module.createElevator("tower", "stone")
+                    for (id in listOf("tower-0", "tower-B", "tower-B0", "tower-0B", "tower-B10", "tower-01", "tower-100")) {
+                        assertFailsWith<IllegalArgumentException>("Accepted $id") { module.createFloor(id, Location(f.world, .5, 60.0, .5)) }
+                    }
+                    assertEquals("tower-G", module.createFloor("tower-1", Location(f.world, .5, 60.0, .5)).id)
+                    assertEquals("tower-B3", module.createFloor("tower-3B", Location(f.world, 10.5, 60.0, .5)).id)
+                    assertFailsWith<IllegalArgumentException> { module.createFloor("tower-G", Location(f.world, 20.5, 60.0, .5)) }
+                    assertEquals("tower-G", module.getFloor("tower-1")?.id)
+                    assertEquals("tower-B3", module.getFloor("tower-3B")?.id)
+                    val saved = YamlConfiguration.loadConfiguration(f.directory.resolve("elevators.yml"))
+                    assertEquals(setOf("G", "B3"), saved.getConfigurationSection("elevators.tower.floors")!!.getKeys(false))
+                }
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `invalid config labels disable only elevators and block saving until a reload succeeds`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                f.floorConstruction().use {
+                    ElevatorsModule(f.logger, f.plugin).apply {
+                        createElevator("tower", "stone")
+                        createFloor("tower-G", Location(f.world, .5, 60.0, .5))
+                    }
+                    val file = f.directory.resolve("elevators.yml")
+                    val good = file.readText()
+                    for (label in listOf("0", "1", "B", "B0", "1B")) {
+                        file.writeText(good.replace("G:", "'$label':"))
+                        val module = ElevatorsModule(f.logger, f.plugin) // Must not throw.
+                        assertTrue(module.getElevators().isEmpty(), label)
+                        assertFailsWith<IllegalArgumentException> { module.createElevator("other", "stone") }
+                        assertEquals(good.replace("G:", "'$label':"), file.readText(), "Config was overwritten for $label")
+                        file.writeText(good)
+                        assertEquals("Reloaded 1 elevators and 0 transit cabs", module.reload())
+                        assertEquals("tower-G", module.getFloor("tower-G")?.id)
+                        module.createElevator("other", "stone")
+                        module.deleteElevator(module.getElevator("other")!!)
+                    }
+                }
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `failed reload keeps running elevators and blocks saving`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                f.floorConstruction().use { floors ->
+                    val module = ElevatorsModule(f.logger, f.plugin)
+                    module.createElevator("tower", "stone")
+                    module.createFloor("tower-G", Location(f.world, .5, 60.0, .5))
+                    val file = f.directory.resolve("elevators.yml")
+                    val broken = file.readText().replace("G:", "'0':")
+                    file.writeText(broken)
+                    assertFailsWith<IllegalArgumentException> { module.reload() }
+                    assertEquals("tower-G", module.getFloor("tower-G")?.id)
+                    verify(floors.constructed().first(), never()).cleanup()
+                    assertFailsWith<IllegalArgumentException> { module.createElevator("other", "stone") }
+                    assertEquals(broken, file.readText())
                 }
             }
         } finally { f.doors.close(); f.directory.deleteRecursively() }
@@ -280,7 +362,7 @@ class ElevatorsModuleTest {
             `when`(frame.location).thenReturn(Location(f.world, 102.96875, -38.5, .5))
             `when`(frame.persistentDataContainer).thenReturn(pdc)
             mockConstruction(ItemStack::class.java) { item, _ ->
-                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java))
+                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java, RETURNS_DEEP_STUBS))
             }.use {
                 module.linkTransitKeypad(frame, "stone1")
                 verify(frame).setVisible(false)
@@ -421,7 +503,7 @@ class ElevatorsModuleTest {
             val module = ElevatorsModule(f.logger, f.plugin)
             val floor = ElevatorFloor("tower-1", ElevatorCab.at(Location(f.world, .5, 60.0, .5)), Elevator("tower", "stone"))
             mockConstruction(ItemStack::class.java) { item, _ ->
-                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java))
+                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java, RETURNS_DEEP_STUBS))
             }.use {
                 val positions = listOf(
                     Location(f.world, -1.96875, 61.5, .5),

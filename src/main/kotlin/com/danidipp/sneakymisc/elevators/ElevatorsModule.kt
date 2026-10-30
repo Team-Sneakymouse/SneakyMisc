@@ -39,6 +39,8 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     private val particles = mutableMapOf<ElevatorTransitCab, ElevatorParticles>()
     private val leases = mutableMapOf<ElevatorTransitCab, MutableList<Chunk>>()
     private var stopped = false
+    /** Set when elevators.yml could not be read. Saving is blocked so the file is not overwritten. */
+    private var configError: String? = null
     private val utils = ElevatorCommandUtils(this)
     override val commands = listOf(
         SneakyMiscCommand(ElevatorCommands(this, utils).build(), "Manage elevators"),
@@ -108,38 +110,86 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     })
 
     init {
-        if (configFile.exists()) {
-            val config = YamlConfiguration.loadConfiguration(configFile)
-            require(config.getInt("version") == 2) { "Unsupported elevators.yml version" }
-            for (name in config.getConfigurationSection("elevators")?.getKeys(false).orEmpty()) {
-                requireName(name)
-                val section = requireNotNull(config.getConfigurationSection("elevators.$name"))
-                val elevator = Elevator(name, requireStyle(requireNotNull(section.getString("style"))))
-                elevators[name] = elevator
-                for (label in section.getConfigurationSection("floors")?.getKeys(false).orEmpty()) {
-                    requireLabel(label)
-                    val cab = ElevatorCab.at(requireNotNull(section.getLocation("floors.$label")))
-                    requireAvailable(cab)
-                    elevator.addFloor(ElevatorFloor("$name-$label", cab, elevator))
-                }
-                for (label in section.getStringList("restricted-floors")) {
-                    if (elevator.getFloor("$name-$label") != null) elevator.setRestricted("$name-$label", true)
-                }
-            }
-            for (name in config.getConfigurationSection("transit-cabs")?.getKeys(false).orEmpty()) {
-                requireName(name)
-                val section = requireNotNull(config.getConfigurationSection("transit-cabs.$name"))
-                val cab = ElevatorCab.at(requireNotNull(section.getLocation("location")))
-                requireAvailable(cab)
-                transitCabs[name] = ElevatorTransitCab(name, requireStyle(requireNotNull(section.getString("style"))), cab)
-            }
-        }
-        getElevators().flatMap { it.getFloors() }.forEach { it.initialize() }
-        transitCabs.values.forEach { it.initialize() }
-        logger.info("Loaded ${elevators.size} elevators and ${transitCabs.size} transit cabs")
+        loadConfig()?.let { logger.severe("Elevators are disabled until elevators.yml is fixed and /elevator reload is run") }
         if (File(plugin.dataFolder, "elevator.yml").exists()) {
             logger.info("Legacy elevator.yml is ignored. Set up elevators using /elevator create and /elevatorfloor create.")
         }
+    }
+
+    /**
+     * Reads elevators.yml and replaces the running setup. If the file is invalid, the running setup is kept
+     * (empty at startup), saving is blocked, and the error is returned.
+     */
+    private fun loadConfig(beforeApply: () -> Unit = {}): String? {
+        val (loadedElevators, loadedCabs) = try {
+            parseConfig()
+        } catch (failure: Exception) {
+            val message = failure.message ?: failure.javaClass.simpleName
+            configError = message
+            logger.log(Level.SEVERE, "Could not load elevators.yml: $message", failure)
+            return message
+        }
+        beforeApply()
+        configError = null
+        elevators.clear(); elevators.putAll(loadedElevators)
+        transitCabs.clear(); transitCabs.putAll(loadedCabs)
+        getElevators().flatMap { it.getFloors() }.forEach { it.initialize() }
+        transitCabs.values.forEach { it.initialize() }
+        logger.info("Loaded ${elevators.size} elevators and ${transitCabs.size} transit cabs")
+        return null
+    }
+
+    private fun parseConfig(): Pair<Map<String, Elevator>, Map<String, ElevatorTransitCab>> {
+        val loadedElevators = linkedMapOf<String, Elevator>()
+        val loadedCabs = linkedMapOf<String, ElevatorTransitCab>()
+        if (!configFile.exists()) return loadedElevators to loadedCabs
+        val config = YamlConfiguration.loadConfiguration(configFile)
+        require(config.getInt("version") == 2) { "Unsupported elevators.yml version" }
+        val occupied = mutableListOf<ElevatorCab>()
+        for (name in config.getConfigurationSection("elevators")?.getKeys(false).orEmpty()) {
+            requireName(name)
+            val section = requireNotNull(config.getConfigurationSection("elevators.$name"))
+            val elevator = Elevator(name, requireStyle(requireNotNull(section.getString("style")) { "Elevator $name has no style" }))
+            loadedElevators[name] = elevator
+            for (label in section.getConfigurationSection("floors")?.getKeys(false).orEmpty()) {
+                require(ElevatorFloorLabels.isCanonical(label)) { "Invalid floor $name-$label. ${ElevatorFloorLabels.RULE}" }
+                val cab = ElevatorCab.at(requireNotNull(section.getLocation("floors.$label")) { "Floor $name-$label has no valid location" })
+                requireAvailable(cab, occupied)
+                occupied.add(cab)
+                elevator.addFloor(ElevatorFloor("$name-$label", cab, elevator))
+            }
+            for (label in section.getStringList("restricted-floors")) {
+                require(ElevatorFloorLabels.isCanonical(label)) { "Invalid restricted floor $name-$label. ${ElevatorFloorLabels.RULE}" }
+                if (elevator.getFloor("$name-$label") != null) elevator.setRestricted("$name-$label", true)
+            }
+        }
+        for (name in config.getConfigurationSection("transit-cabs")?.getKeys(false).orEmpty()) {
+            requireName(name)
+            val section = requireNotNull(config.getConfigurationSection("transit-cabs.$name"))
+            val cab = ElevatorCab.at(requireNotNull(section.getLocation("location")) { "Transit cab $name has no valid location" })
+            requireAvailable(cab, occupied)
+            occupied.add(cab)
+            loadedCabs[name] = ElevatorTransitCab(name, requireStyle(requireNotNull(section.getString("style")) { "Transit cab $name has no style" }), cab)
+        }
+        return loadedElevators to loadedCabs
+    }
+
+    /** Re-reads elevators.yml. Refuses while any elevator travel is active. */
+    fun reload(): String {
+        require(!stopped) { "Elevators are currently stopped" }
+        require(travel.isIdle()) { "Wait until all elevator travel has finished" }
+        // The old setup is only torn down once the new file has parsed, so a bad file leaves running elevators alone.
+        val error = loadConfig {
+            guis.toList().forEach { it.invalidate(); it.inventory.close() }
+            getElevators().flatMap { it.getFloors() }.forEach { it.cleanup() }
+            transitCabs.values.forEach { it.cleanup() }
+        }
+        require(error == null) { "Reload failed: $error. Current elevators keep running, but changes are blocked until a reload succeeds." }
+        return "Reloaded ${elevators.size} elevators and ${transitCabs.size} transit cabs"
+    }
+
+    private fun requireWritable() {
+        configError?.let { throw IllegalArgumentException("elevators.yml failed to load ($it). Fix it and run /elevator reload before making changes.") }
     }
 
     private fun transfer(from: ElevatorCab, to: ElevatorCab, music: Boolean): Int {
@@ -168,10 +218,14 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
 
     fun getElevators(): Collection<Elevator> = elevators.values
     fun getElevator(name: String): Elevator? = elevators[name]
-    fun getFloor(id: String): ElevatorFloor? = elevators.values.firstNotNullOfOrNull { it.getFloor(id) }
+    /** Accepts label aliases, e.g. `tower-1` finds `tower-G`. */
+    fun getFloor(id: String): ElevatorFloor? = ElevatorFloorLabels.canonicalId(id).let { canonical ->
+        elevators.values.firstNotNullOfOrNull { it.getFloor(canonical) }
+    }
     fun getTransitCabs(): Collection<ElevatorTransitCab> = transitCabs.values
 
     fun createElevator(name: String, style: String) {
+        requireWritable()
         requireName(name)
         require(name !in elevators) { "Elevator already exists" }
         elevators[name] = Elevator(name, requireStyle(style))
@@ -179,24 +233,29 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     }
 
     fun setStyle(elevator: Elevator, style: String) {
+        requireWritable()
         require(elevator.getFloors().none { travel.involves(it) }) { "Elevator has active travel" }
         elevator.style = requireStyle(style)
         saveConfig()
     }
 
     fun deleteElevator(elevator: Elevator) {
+        requireWritable()
         require(elevator.getFloors().none { travel.involves(it) }) { "Elevator has active travel" }
         elevator.getFloors().toList().forEach { deleteFloor(it) }
         elevators.remove(elevator.name)
         saveConfig()
     }
 
-    fun createFloor(id: String, position: Location): ElevatorFloor {
-        require(id.count { it == '-' } == 1 && !id.startsWith('-') && !id.endsWith('-')) {
+    /** Accepts label aliases and stores the canonical ID, e.g. `tower-1` creates `tower-G`. */
+    fun createFloor(input: String, position: Location): ElevatorFloor {
+        requireWritable()
+        require(input.count { it == '-' } == 1 && !input.startsWith('-') && !input.endsWith('-')) {
             "Format: <name>-<floor>"
         }
+        val id = ElevatorFloorLabels.canonicalId(input)
         val elevator = requireNotNull(elevators[id.substringBeforeLast('-')]) { "Create the elevator first: /elevator create <name> <style>" }
-        requireLabel(id.substringAfterLast('-'))
+        require(ElevatorFloorLabels.isCanonical(id.substringAfterLast('-'))) { ElevatorFloorLabels.RULE }
         require(getFloor(id) == null) { "Elevator floor already exists" }
         val cab = ElevatorCab.at(position)
         requireAvailable(cab)
@@ -208,6 +267,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     }
 
     fun deleteFloor(floor: ElevatorFloor) {
+        requireWritable()
         require(!travel.involves(floor)) { "Elevator floor has active travel" }
         guis.filter { it.floor === floor }.toList().forEach { it.invalidate(); it.inventory.close() }
         floor.cleanup()
@@ -216,6 +276,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     }
 
     fun createTransitCab(name: String, style: String, position: Location) {
+        requireWritable()
         requireName(name)
         require(name !in transitCabs) { "Transit cab already exists" }
         val cab = ElevatorCab.at(position)
@@ -225,6 +286,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     }
 
     fun deleteTransitCab(name: String) {
+        requireWritable()
         val cab = requireNotNull(transitCabs[name]) { "Transit cab not found" }
         require(!travel.uses(cab)) { "Transit cab has active travel" }
         cab.cleanup()
@@ -233,15 +295,18 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     }
 
     fun setTransitStyle(name: String, style: String) {
+        requireWritable()
         val cab = requireNotNull(transitCabs[name]) { "Transit cab not found" }
         require(!travel.uses(cab)) { "Transit cab has active travel" }
         cab.style = requireStyle(style)
         saveConfig()
     }
 
-    private fun requireAvailable(cab: ElevatorCab) {
+    private fun requireAvailable(
+        cab: ElevatorCab,
+        existing: List<ElevatorCab> = elevators.values.flatMap { it.getFloors().map { floor -> floor.cab } } + transitCabs.values.map { it.cab },
+    ) {
         require(cab.location.y >= cab.location.world.minHeight && cab.location.y + 4 <= cab.location.world.maxHeight) { "Cab is outside world height limits" }
-        val existing = elevators.values.flatMap { it.getFloors().map { floor -> floor.cab } } + transitCabs.values.map { it.cab }
         require(existing.none { it.overlaps(cab) }) { "Cab interior overlaps an existing elevator floor or transit cab" }
     }
 
@@ -267,6 +332,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     fun floorPermission(floor: ElevatorFloor): String = "sneakymisc.elevator.floor.${floor.id}"
 
     fun setRestricted(floor: ElevatorFloor, restricted: Boolean) {
+        requireWritable()
         floor.elevator.setRestricted(floor.id, restricted)
         saveConfig()
     }
@@ -277,7 +343,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         frame.persistentDataContainer.set(CONTROL_FLOOR, PersistentDataType.STRING, floor.id)
         frame.persistentDataContainer.set(CONTROL_MODE, PersistentDataType.STRING, mode)
         frame.isVisible = false
-        frame.setItem(if (mode == "select") ElevatorGUI.getNumber(5994) else null)
+        frame.setItem(if (mode == "select") ElevatorGUI.model("panel") else null)
         return if (mode == "select") "keypad" else "call control"
     }
 
@@ -288,7 +354,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         frame.persistentDataContainer.remove(CONTROL_MODE)
         frame.persistentDataContainer.set(TRANSIT_KEYPAD, PersistentDataType.STRING, name)
         frame.isVisible = false
-        frame.setItem(ElevatorGUI.getNumber(5994))
+        frame.setItem(ElevatorGUI.model("panel"))
     }
 
     fun saveConfig() {
@@ -375,8 +441,5 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     private fun requireStyle(value: String): String {
         require(value.matches(Regex("[a-z0-9_-]+"))) { "Styles may contain lowercase letters, digits, underscores, and hyphens" }
         return value
-    }
-    private fun requireLabel(value: String) {
-        require(value in listOf("B", "G") || value.toIntOrNull()?.let { it in 0..99 && it.toString() == value } == true) { "Floor must be B, G, or 0 through 99 (without leading zeros)" }
     }
 }

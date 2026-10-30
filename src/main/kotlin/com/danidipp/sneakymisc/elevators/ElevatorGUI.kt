@@ -3,6 +3,7 @@ package com.danidipp.sneakymisc.elevators
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.SoundCategory
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
@@ -22,7 +23,7 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
     override fun getInventory(): Inventory = contents
 
     init {
-        contents.setItem(0, getNumber(3046))
+        contents.setItem(0, model("gui"))
         renderInput()
     }
 
@@ -32,8 +33,8 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
     }
 
     private fun renderInput() {
-        contents.setItem(4, input.tens?.let { getNumber(6000 + it * 10) })
-        contents.setItem(5, input.ones?.let { getNumber(6000 + it) })
+        contents.setItem(4, if (input.basement) model("display_b") else input.tens?.let { model("display_${it}l") })
+        contents.setItem(5, input.ones?.let { model("display_${it}r") })
     }
 
     private fun click(player: Player, slot: Int) {
@@ -49,7 +50,7 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
             30, 31, 32 -> input.digit(slot - 23)
             39 -> input.digit(0)
             40 -> "G"
-            41 -> "B"
+            41 -> { input.basement(); null }
             else -> return
         }
         player.playSound(player, "lom:ui.button.click", SoundCategory.MASTER, 1f, 1f)
@@ -66,8 +67,8 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
             } else {
                 player.sendMessage(error)
                 player.playSound(player, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
-                contents.setItem(4, getNumber(5998))
-                contents.setItem(5, getNumber(5998))
+                contents.setItem(4, model("display_x"))
+                contents.setItem(5, model("display_x"))
                 Bukkit.getScheduler().runTaskLater(module.plugin, Runnable {
                     if (valid) { input.reset(); pending = false; renderInput() }
                 }, 15)
@@ -90,9 +91,13 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
     companion object {
         private const val CONFIRM_DELAY_TICKS = 20L
 
-        fun getNumber(model: Int): ItemStack = ItemStack(Material.JIGSAW).apply {
+        private val ITEM_MODEL = NamespacedKey("lom", "elevator_gui")
+
+        /** An item showing one case of the `lom:elevator_gui` item model, e.g. `gui`, `panel`, `display_3l`. */
+        fun model(name: String): ItemStack = ItemStack(Material.PAPER).apply {
             itemMeta = itemMeta.apply {
-                setCustomModelData(model)
+                setItemModel(ITEM_MODEL)
+                setCustomModelDataComponent(customModelDataComponent.apply { strings = listOf(name) })
                 isHideTooltip = true
             }
         }

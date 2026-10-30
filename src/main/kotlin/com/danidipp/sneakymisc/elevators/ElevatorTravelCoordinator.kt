@@ -34,6 +34,7 @@ internal class ElevatorTravelCoordinator<F : Any, C : Any>(
     fun isDeparting(floor: F): Boolean = floor in departures
     fun involves(floor: F): Boolean = active.any { it.origin == floor || it.destination == floor }
     fun uses(cab: C): Boolean = active.any { it.cab == cab }
+    fun isIdle(): Boolean = active.isEmpty()
 
     fun call(floor: F) {
         cancelDeparture(floor)

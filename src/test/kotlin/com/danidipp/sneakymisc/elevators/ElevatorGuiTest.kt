@@ -47,7 +47,7 @@ class ElevatorGuiTest {
             bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(scheduler)
             bukkit.`when`<Inventory> { Bukkit.createInventory(any(InventoryHolder::class.java), eq(54), any(Component::class.java)) }.thenReturn(inventory)
             mockConstruction(ItemStack::class.java) { item, _ ->
-                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java))
+                `when`(item.itemMeta).thenReturn(mock(ItemMeta::class.java, RETURNS_DEEP_STUBS))
             }.use {
                 val gui = ElevatorGUI(module, floor)
                 `when`(inventory.holder).thenReturn(gui)
@@ -79,6 +79,10 @@ class ElevatorGuiTest {
             listener.javaClass.getMethod("onClose", InventoryCloseEvent::class.java).invoke(listener, InventoryCloseEvent(view))
         }
         fun next() = queued.removeAt(0).run()
+        /** The model most recently placed in [slot]. */
+        fun shown(slot: Int): String? = modelName(
+            mockingDetails(inventory).invocations.lastOrNull { it.method.name == "setItem" && it.arguments[0] == slot }?.arguments?.get(1) as ItemStack?
+        )
     }
 
     @Test fun `two digit input evaluates automatically after the click event`() = scenario { f ->
@@ -131,17 +135,41 @@ class ElevatorGuiTest {
             verify(f.module).select(f.player, f.floor, "G")
         }
         scenario { f ->
-            f.click(41) // Previous clear slot is now B.
+            f.click(41) // B is a prefix, then one digit completes the basement.
+            assertTrue(f.queued.isEmpty())
+            assertEquals("display_b", f.shown(4))
+            assertNull(f.shown(5))
+            f.click(13) // 2
+            assertEquals("display_2r", f.shown(5))
             f.next()
-            verify(f.module).select(f.player, f.floor, "B")
+            verify(f.module).select(f.player, f.floor, "B2")
         }
+    }
+
+    @Test fun `numbered input shows left tens and right ones and zero one selects G`() = scenario { f ->
+        f.click(39) // 0
+        assertEquals("display_0l", f.shown(4))
+        f.click(12) // 1
+        assertEquals("display_1r", f.shown(5))
+        f.next()
+        verify(f.module).select(f.player, f.floor, "G")
+    }
+
+    @Test fun `B after a digit is ignored`() = scenario { f ->
+        f.click(12) // 1
+        f.click(41) // B
+        assertEquals("display_1l", f.shown(4))
+        f.click(13) // 2
+        f.next()
+        verify(f.module).select(f.player, f.floor, "12")
     }
 
     @Test fun `background stays in slot zero with no button models names or tooltips`() = scenario { f ->
         val placed = mockingDetails(f.inventory).invocations.filter { it.method.name == "setItem" }
         assertEquals(setOf(0, 4, 5), placed.map { it.arguments[0] }.toSet())
         val background = placed.single { it.arguments[0] == 0 }.arguments[1] as ItemStack
-        verify(background.itemMeta).setCustomModelData(3046)
+        verify(background.itemMeta).setItemModel(org.bukkit.NamespacedKey("lom", "elevator_gui"))
+        assertEquals("gui", modelName(background))
         verify(background.itemMeta).setHideTooltip(true)
         assertTrue(mockingDetails(background.itemMeta).invocations.none {
             it.method.name in setOf("displayName", "customName") && it.arguments.isNotEmpty()
@@ -152,14 +180,26 @@ class ElevatorGuiTest {
     }
 
     @Test fun `invalid selection resets but its delayed error cannot revive a closed GUI`() = scenario { f ->
-        `when`(f.module.select(f.player, f.floor, "B")).thenReturn("That floor does not exist.")
+        `when`(f.module.select(f.player, f.floor, "B0")).thenReturn("That floor does not exist.")
         f.click(41)
+        f.click(39)
         f.next()
         verify(f.player).sendMessage("That floor does not exist.")
+        assertEquals("display_x", f.shown(4))
+        assertEquals("display_x", f.shown(5))
         f.close()
         f.next()
         f.click(12)
         assertTrue(f.queued.isEmpty())
-        verify(f.module, times(1)).select(f.player, f.floor, "B")
+        verify(f.module, times(1)).select(f.player, f.floor, "B0")
+    }
+
+    companion object {
+        /** The `lom:elevator_gui` case set on a mocked item, or null for an empty slot. */
+        fun modelName(item: ItemStack?): String? {
+            if (item == null) return null
+            val call = mockingDetails(item.itemMeta.customModelDataComponent).invocations.lastOrNull { it.method.name == "setStrings" }
+            return (call?.arguments?.get(0) as List<*>?)?.single() as String?
+        }
     }
 }

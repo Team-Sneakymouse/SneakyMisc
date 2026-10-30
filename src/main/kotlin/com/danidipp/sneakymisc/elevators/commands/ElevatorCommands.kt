@@ -9,7 +9,8 @@ import io.papermc.paper.command.brigadier.Commands
 internal class ElevatorCommands(private val module: ElevatorsModule, private val utils: ElevatorCommandUtils) {
     fun build(): LiteralCommandNode<CommandSourceStack> = Commands.literal("elevator")
         .requires { it.sender.hasPermission("sneakymisc.elevator") }
-        .executes { utils.fail(it, "Usage: /elevator <create|style|delete|list|call>") }
+        .executes { utils.fail(it, "Usage: /elevator <create|style|delete|list|call|reload>") }
+        .then(Commands.literal("reload").executes { context -> utils.attempt(context) { module.reload() } })
         .then(Commands.literal("list").executes { context ->
             module.getElevators().forEach { context.source.sender.sendMessage(it.formatComponent()) }; 1
         })
