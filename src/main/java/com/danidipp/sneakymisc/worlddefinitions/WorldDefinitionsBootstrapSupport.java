@@ -25,7 +25,12 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-/** Builds a startup datapack from the small set of world settings exposed in worlds.yml. */
+/**
+ * Builds a startup datapack from the small set of world settings exposed in worlds.yml.
+ * Datapack discovery runs before server worlds and registries are available; use the bootstrap
+ * context and configuration/data APIs here rather than live Bukkit server state.
+ * Configuration and saved-world compatibility are documented in docs/custom-worlds.md.
+ */
 public final class WorldDefinitionsBootstrapSupport {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Pattern ID = Pattern.compile("[a-z0-9._-]+:[a-z0-9._/-]+");
