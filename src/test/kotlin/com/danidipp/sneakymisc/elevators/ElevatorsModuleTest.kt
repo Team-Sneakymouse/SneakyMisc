@@ -352,7 +352,7 @@ class ElevatorsModuleTest {
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
-    @Test fun `transit keypad uses the keypad model and cancels interaction without opening a GUI`() {
+    @Test fun `transit keypad uses the keypad model and only the main hand click tries to start travel`() {
         val f = Fixture()
         try {
             val module = ElevatorsModule(f.logger, f.plugin)
@@ -372,6 +372,7 @@ class ElevatorsModuleTest {
                 verify(pdc).set(ElevatorsModule.TRANSIT_KEYPAD, PersistentDataType.STRING, "stone1")
             }
             `when`(pdc.has(ElevatorsModule.TRANSIT_KEYPAD, PersistentDataType.STRING)).thenReturn(true)
+            `when`(pdc.get(ElevatorsModule.TRANSIT_KEYPAD, PersistentDataType.STRING)).thenReturn("stone1")
             val player = f.player(Location(f.world, 100.5, -40.0, .5))
             for (hand in org.bukkit.inventory.EquipmentSlot.entries.filter { it == org.bukkit.inventory.EquipmentSlot.HAND || it == org.bukkit.inventory.EquipmentSlot.OFF_HAND }) {
                 val event = org.bukkit.event.player.PlayerInteractEntityEvent(player, frame, hand)
@@ -379,9 +380,56 @@ class ElevatorsModuleTest {
                 assertTrue(event.isCancelled)
             }
             verify(player, never()).openInventory(any(Inventory::class.java))
+            // No stone elevator floors exist, so the single main-hand attempt fails audibly.
+            verify(player, times(1)).playSound(player, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
             verify(frame, times(1)).setItem(any(ItemStack::class.java))
             `when`(frame.location).thenReturn(Location(f.world, 110.5, -38.5, .5))
             assertFailsWith<IllegalArgumentException> { module.linkTransitKeypad(frame, "stone1") }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `transit keypad sends idle cab occupants to an accessible floor of the cab style`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                module.createElevator("hut", "wood")
+                val restricted = f.floor(module, "G", .5)
+                val destination = f.floor(module, "2", 20.5, 80.0)
+                module.setRestricted(restricted, true)
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                module.createTransitCab("wood1", "wood", Location(f.world, 200.5, -40.0, .5))
+                val stone = module.getTransitCabs().single { it.name == "stone1" }
+                val wood = module.getTransitCabs().single { it.name == "wood1" }
+                val stranded = f.player(stone.cab.location.clone())
+                val companion = f.player(stone.cab.location.clone().add(1.0, 0.0, 0.0))
+                val outside = f.player(Location(f.world, 50.5, 60.0, .5))
+                val woodRider = f.player(wood.cab.location.clone())
+
+                module.startRandomTransit(outside, stone)
+                module.startRandomTransit(woodRider, wood) // No wood elevator floors exist.
+                for (player in listOf(outside, woodRider)) verify(player).playSound(player, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
+                assertTrue(module.travel.isIdle())
+
+                module.startRandomTransit(stranded, stone)
+                assertTrue(module.travel.uses(stone))
+                assertTrue(module.travel.involves(destination)) // The restricted floor is never picked.
+                for (player in listOf(stranded, companion)) verify(player).playSound(player, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+                assertEquals(1, f.particleTicks.size)
+                module.startRandomTransit(companion, stone) // Clicks during travel do nothing.
+                verify(companion, never()).playSound(companion, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
+
+                f.callbacks.first().run()
+                assertEquals(20.5, stranded.location.x)
+                assertEquals(80.0, stranded.location.y)
+                assertEquals(21.5, companion.location.x)
+                verify(destination).open()
+                verify(restricted, never()).open()
+                assertTrue(module.travel.isIdle())
+            }
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
@@ -530,13 +578,15 @@ class ElevatorsModuleTest {
         try {
             val module = ElevatorsModule(f.logger, f.plugin)
             val floor = ElevatorFloor("tower-1", ElevatorCab.at(Location(f.world, .5, 60.0, .5)), Elevator("tower", "stone"))
+            // Location only weakly references its world, so keep the other world reachable for the whole test.
+            val otherWorld = mock(World::class.java)
             val positions = listOf(
                 Location(f.world, -2.03125, 61.5, .5),
                 Location(f.world, 3.03125, 61.5, .5),
                 Location(f.world, .5, 61.5, -2.03125),
                 Location(f.world, .5, 61.5, 3.03125),
                 Location(f.world, .5, 65.5, .5),
-                Location(mock(World::class.java), .5, 61.5, .5),
+                Location(otherWorld, .5, 61.5, .5),
             )
             for (position in positions) {
                 val frame = mock(ItemFrame::class.java)

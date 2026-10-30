@@ -14,7 +14,8 @@ class ElevatorCabTest {
         assertFalse(cab.contains(Location(world, .5, 59.99, .5)))
         assertFalse(cab.contains(Location(world, .5, 64.0, .5)))
         assertFalse(cab.contains(Location(world, .5, 60.0, 3.0)))
-        assertFalse(cab.contains(Location(mock(World::class.java), .5, 60.0, .5)))
+        val otherWorld = mock(World::class.java) // Location only weakly references its world.
+        assertFalse(cab.contains(Location(otherWorld, .5, 60.0, .5)))
     }
 
     @Test fun `both teleport stages preserve relative position facing and pitch at every cardinal rotation`() {

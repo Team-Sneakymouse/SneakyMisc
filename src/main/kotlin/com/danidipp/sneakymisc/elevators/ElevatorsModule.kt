@@ -52,21 +52,23 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     internal val travel = ElevatorTravelCoordinator(object : ElevatorTravelEnvironment<ElevatorFloor, ElevatorTransitCab> {
         override fun compatibleCabs(origin: ElevatorFloor) = transitCabs.values.filter { it.style == origin.elevator.style }
         override fun isEmpty(cab: ElevatorTransitCab) = cab.cab.players().isEmpty()
-        override fun prepare(origin: ElevatorFloor, destination: ElevatorFloor, cab: ElevatorTransitCab) {
+        override fun prepare(origin: ElevatorFloor?, destination: ElevatorFloor, cab: ElevatorTransitCab) {
             val acquired = mutableListOf<Chunk>()
             leases[cab] = acquired
-            for (chunk in listOf(origin.cab, destination.cab, cab.cab).flatMap { chunks(it) }.distinct()) {
+            for (chunk in listOfNotNull(origin?.cab, destination.cab, cab.cab).flatMap { chunks(it) }.distinct()) {
                 if (chunk !in chunkUsers) chunk.addPluginChunkTicket(plugin)
                 chunkUsers[chunk] = (chunkUsers[chunk] ?: 0) + 1
                 acquired.add(chunk)
             }
-            origin.ensureDoors()
+            origin?.ensureDoors()
             destination.ensureDoors()
             cab.initialize()
-            val movementY = -destination.location.y.compareTo(origin.location.y).toDouble()
+            // Travel from inside a transit cab has no departure height, so it picks a random direction.
+            val movementY = if (origin == null) listOf(-1.0, 1.0).random()
+            else -destination.location.y.compareTo(origin.location.y).toDouble()
             particles[cab] = ElevatorParticles(plugin, cab.cab, movementY, SONG_DURATION + 20)
         }
-        override fun release(origin: ElevatorFloor, destination: ElevatorFloor, cab: ElevatorTransitCab) {
+        override fun release(origin: ElevatorFloor?, destination: ElevatorFloor, cab: ElevatorTransitCab) {
             particles.remove(cab)?.stop()
             for (chunk in leases.remove(cab).orEmpty()) {
                 val remaining = (chunkUsers[chunk] ?: 1) - 1
@@ -96,6 +98,12 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             if (moved > 0) particles[cab]?.start()
             return moved
         }
+        override fun boardInPlace(cab: ElevatorTransitCab): Int {
+            val occupants = cab.cab.players()
+            occupants.forEach { it.playSound(it, "lom:elevator", SoundCategory.MASTER, 1f, 1f) }
+            if (occupants.isNotEmpty()) particles[cab]?.start()
+            return occupants.size
+        }
         override fun afterTravel(arrive: () -> Unit): ElevatorTask {
             val task = Bukkit.getScheduler().runTaskLater(plugin, Runnable { arrive() }, SONG_DURATION + 20)
             return ElevatorTask { task.cancel() }
@@ -103,9 +111,9 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         override fun arrive(cab: ElevatorTransitCab, destination: ElevatorFloor) {
             if (transfer(cab.cab, destination.cab, false) > 0) particles[cab]?.arrival(destination.cab)
         }
-        override fun failed(origin: ElevatorFloor, failure: Exception) {
-            logger.log(Level.SEVERE, "Elevator travel from ${origin.id} failed", failure)
-            origin.cab.players().forEach { it.sendMessage("Elevator travel failed. Use /spawn if you are stuck.") }
+        override fun failed(origin: ElevatorFloor?, cab: ElevatorTransitCab, failure: Exception) {
+            logger.log(Level.SEVERE, "Elevator travel from ${origin?.id ?: "transit cab ${cab.name}"} failed", failure)
+            (origin?.cab ?: cab.cab).players().forEach { it.sendMessage("Elevator travel failed. Use /spawn if you are stuck.") }
         }
     })
 
@@ -329,6 +337,20 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         }
     }
 
+    /**
+     * Clicking the keypad inside an idle transit cab sends everyone inside to a random elevator floor of the cab's
+     * style that the clicker may select. Clicks during travel do nothing; anything else that prevents travel
+     * plays the error sound.
+     */
+    internal fun startRandomTransit(player: Player, cab: ElevatorTransitCab) {
+        if (stopped || travel.uses(cab)) return
+        val destinations = elevators.values.filter { it.style == cab.style }.flatMap { it.getFloors() }
+            .filter { !it.elevator.isRestricted(it.id) || player.hasPermission(floorPermission(it)) }
+        val result = if (destinations.isEmpty() || !cab.cab.contains(player.location)) null
+        else travel.startFromCab(cab, destinations.random())
+        if (result != ElevatorDepartureResult.STARTED) player.playSound(player, "lom:fail_wrong", SoundCategory.MASTER, 1f, 1f)
+    }
+
     fun floorPermission(floor: ElevatorFloor): String = "sneakymisc.elevator.floor.${floor.id}"
 
     fun setRestricted(floor: ElevatorFloor, restricted: Boolean) {
@@ -379,6 +401,10 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         val frame = event.rightClicked as? ItemFrame ?: return
         if (frame.persistentDataContainer.has(TRANSIT_KEYPAD, PersistentDataType.STRING)) {
             event.isCancelled = true
+            // Each click fires once per hand; only the main hand may start travel.
+            if (event.hand != EquipmentSlot.HAND) return
+            val cab = frame.persistentDataContainer.get(TRANSIT_KEYPAD, PersistentDataType.STRING)?.let { transitCabs[it] } ?: return
+            startRandomTransit(event.player, cab)
             return
         }
         if (event.hand != EquipmentSlot.HAND) return
@@ -396,7 +422,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             event.isCancelled = true
             try {
                 linkTransitKeypad(frame, name)
-                event.player.sendMessage("Linked decorative keypad to $name")
+                event.player.sendMessage("Linked transit keypad to $name")
             } catch (failure: IllegalArgumentException) {
                 event.player.sendMessage(failure.message ?: "Invalid transit keypad")
             }

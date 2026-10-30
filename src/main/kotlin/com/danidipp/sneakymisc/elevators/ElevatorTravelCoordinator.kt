@@ -4,19 +4,24 @@ internal fun interface ElevatorTask {
     fun cancel()
 }
 
-/** Physical effects live behind this interface; scheduling and cancellation share one lifecycle. */
+/**
+ * Physical effects live behind this interface; scheduling and cancellation share one lifecycle.
+ * A null origin means travel started inside an idle transit cab rather than at an elevator floor.
+ */
 internal interface ElevatorTravelEnvironment<F : Any, C : Any> {
     fun compatibleCabs(origin: F): List<C>
     fun isEmpty(cab: C): Boolean
-    fun prepare(origin: F, destination: F, cab: C)
-    fun release(origin: F, destination: F, cab: C)
+    fun prepare(origin: F?, destination: F, cab: C)
+    fun release(origin: F?, destination: F, cab: C)
     fun closeSelections(floor: F, interrupt: Boolean)
     fun openDoors(floor: F)
     fun closeDoors(floor: F, closed: () -> Unit): ElevatorTask
     fun board(origin: F, cab: C): Int
+    /** Starts travel effects for the accounts already inside [cab] and returns how many there are. */
+    fun boardInPlace(cab: C): Int
     fun afterTravel(arrive: () -> Unit): ElevatorTask
     fun arrive(cab: C, destination: F)
-    fun failed(origin: F, failure: Exception)
+    fun failed(origin: F?, cab: C, failure: Exception)
 }
 
 internal enum class ElevatorDepartureResult { STARTED, SAME_FLOOR, BUSY, NO_COMPATIBLE_CAB, AT_CAPACITY, FAILED }
@@ -24,7 +29,7 @@ internal enum class ElevatorDepartureResult { STARTED, SAME_FLOOR, BUSY, NO_COMP
 internal class ElevatorTravelCoordinator<F : Any, C : Any>(
     private val environment: ElevatorTravelEnvironment<F, C>,
 ) {
-    private inner class Travel(val origin: F, val destination: F, val cab: C) {
+    private inner class Travel(val origin: F?, val destination: F, val cab: C) {
         var task: ElevatorTask? = null
     }
 
@@ -60,27 +65,48 @@ internal class ElevatorTravelCoordinator<F : Any, C : Any>(
             travel.task = environment.closeDoors(origin) { depart(travel) }
         } catch (failure: Exception) {
             finish(travel)
-            environment.failed(origin, failure)
+            environment.failed(origin, cab, failure)
             environment.openDoors(origin)
             return ElevatorDepartureResult.FAILED
         }
         return ElevatorDepartureResult.STARTED
     }
 
+    /** Sends the accounts inside an idle transit cab to [destination]. There are no doors to close first. */
+    fun startFromCab(cab: C, destination: F): ElevatorDepartureResult {
+        if (uses(cab)) return ElevatorDepartureResult.BUSY
+        val travel = Travel(null, destination, cab)
+        active.add(travel)
+        try {
+            environment.prepare(null, destination, cab)
+            if (environment.boardInPlace(cab) == 0) {
+                finish(travel)
+                return ElevatorDepartureResult.FAILED
+            }
+            travel.task = environment.afterTravel { arrive(travel) }
+        } catch (failure: Exception) {
+            finish(travel)
+            environment.failed(null, cab, failure)
+            return ElevatorDepartureResult.FAILED
+        }
+        return ElevatorDepartureResult.STARTED
+    }
+
     private fun depart(travel: Travel) {
-        if (departures[travel.origin] !== travel || travel !in active) return
-        departures.remove(travel.origin)
+        val origin = travel.origin ?: return
+        if (departures[origin] !== travel || travel !in active) return
+        departures.remove(origin)
         travel.task = null
         try {
-            if (environment.board(travel.origin, travel.cab) == 0) {
+            if (environment.board(origin, travel.cab) == 0) {
                 finish(travel)
-                environment.openDoors(travel.origin)
+                environment.openDoors(origin)
                 return
             }
             travel.task = environment.afterTravel { arrive(travel) }
         } catch (failure: Exception) {
             finish(travel)
-            environment.failed(travel.origin, failure)
+            environment.failed(origin, travel.cab, failure)
         }
     }
 
@@ -94,7 +120,7 @@ internal class ElevatorTravelCoordinator<F : Any, C : Any>(
             environment.arrive(travel.cab, travel.destination)
             environment.openDoors(travel.destination)
         } catch (failure: Exception) {
-            environment.failed(travel.origin, failure)
+            environment.failed(travel.origin, travel.cab, failure)
         } finally {
             finish(travel)
         }
@@ -106,7 +132,7 @@ internal class ElevatorTravelCoordinator<F : Any, C : Any>(
 
     private fun finish(travel: Travel) {
         if (!active.remove(travel)) return
-        if (departures[travel.origin] === travel) departures.remove(travel.origin)
+        travel.origin?.let { if (departures[it] === travel) departures.remove(it) }
         travel.task?.cancel()
         travel.task = null
         environment.release(travel.origin, travel.destination, travel.cab)

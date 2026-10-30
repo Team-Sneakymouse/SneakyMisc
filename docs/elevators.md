@@ -42,7 +42,7 @@ Place transit cabs beyond the configured proximity voice range of **both ordinar
 | `/elevatorfloor close <name-floor>` | Cancel an uncommitted departure and close doors |
 | `/elevatorfloor restrict <name-floor> <true\|false>` | Require (or stop requiring) `sneakymisc.elevator.floor.<name-floor>` to select the floor |
 | `/elevatorfloor delete <name-floor>` | Remove an inactive elevator floor and its animated doors |
-| `/elevatorcab link <name>` | Link an inside item frame as a decorative, nonfunctional keypad |
+| `/elevatorcab link <name>` | Link an inside item frame as a transit keypad |
 | `/elevatorcab list` | List transit cabs, styles, and locations |
 | `/elevatorcab style <name> <style>` | Change an inactive transit cab's style |
 | `/elevatorcab delete <name>` | Remove an inactive transit cab and its generated doors; leave the built interior |
@@ -53,9 +53,11 @@ Elevator and transit-cab commands need `sneakymisc.elevator`; elevator-floor com
 
 Setup is stored in `plugins/SneakyMisc/elevators.yml`. The file only accepts canonical labels (no aliases). If it is invalid, for example a `0`, `1`, `B`, or `B0` floor, only elevators are disabled at startup and the error is logged; the rest of SneakyMisc loads normally. A failed `/elevator reload` keeps the running elevators. Either way, changes are blocked until a reload succeeds so the file is not overwritten. Fix the file and run `/elevator reload`. Legacy `elevator.yml` is ignored; recreate existing elevators. Active elevator travel and passenger information are not persisted. Interrupted or stranded occupants can use `/spawn`. Physically occupied transit cabs are skipped until empty.
 
-## Decorative transit keypads
+## Transit keypads
 
-Place an item frame inside a registered transit cab, look at it within five blocks, and run `/elevatorcab link stone1`. Alternatively, right-click the frame holding an item named `stone1` with `sneakymisc.elevator` permission. The frame displays the usual keypad model but clicking it does nothing during travel. Position it to match the keypads in the compatible elevator floors.
+Place an item frame inside a registered transit cab, look at it within five blocks, and run `/elevatorcab link stone1`. Alternatively, right-click the frame holding an item named `stone1` with `sneakymisc.elevator` permission. The frame displays the usual keypad model. Position it to match the keypads in the compatible elevator floors.
+
+Clicking it does nothing during elevator travel. Clicking it from inside an idle transit cab, for example after being summoned or stranded there, starts elevator travel for everyone inside to a random elevator floor of the cab's style that the clicker may select. Restricted floors count only if the clicker has their permission. The trip has the usual music, timing, and arrival, and its trail particles move in a random direction. If no such floor exists, an error sound plays and nothing happens.
 
 Deleting a transit-cab registration removes its generated doors and clears the doorway; the rest of the built cab remains.
 
@@ -64,6 +66,7 @@ Deleting a transit-cab registration removes its generated doors and clears the d
 After rebuilding the physical elevators, verify the following with multiple accounts:
 
 - Call at different elevator floors during active elevator travel, and exhaust the matching style's transit-cab pool.
+- Click a transit keypad while summoned into an idle transit cab, with and without access to restricted floors.
 - Reopen doors during departure; then arrive at another elevator floor while its doors are closing or someone is selecting a destination.
 - Teleport out and summon another account in during elevator travel. Check preserved offsets/facing at rotated elevator floors and transit cabs.
 - Check upward/downward transit sparkles, the arrival shimmer, door movement, collision barriers, keypad models, music timing, and actual voice isolation. These require the server and resource pack and cannot be proven by JVM tests.

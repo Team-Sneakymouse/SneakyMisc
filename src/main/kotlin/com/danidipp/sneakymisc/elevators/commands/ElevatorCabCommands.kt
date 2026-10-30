@@ -37,7 +37,7 @@ internal class ElevatorCabCommands(private val module: ElevatorsModule, private 
             val frame = player.getTargetEntity(5) as? ItemFrame ?: return@executes utils.fail(context, "Look at an item frame within five blocks")
             utils.attempt(context) {
                 module.linkTransitKeypad(frame, context.stringArg("name"))
-                "Linked decorative keypad to ${context.stringArg("name")}"
+                "Linked transit keypad to ${context.stringArg("name")}"
             }
         }))
         .then(Commands.literal("delete").then(Commands.argument("name", StringArgumentType.word()).suggests(utils.cabSuggestions).executes { context ->

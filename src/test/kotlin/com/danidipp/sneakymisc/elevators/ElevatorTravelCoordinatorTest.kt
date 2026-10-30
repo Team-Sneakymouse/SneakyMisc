@@ -24,10 +24,10 @@ class ElevatorTravelCoordinatorTest {
         fun people(at: String) = occupants.getOrPut(at) { linkedSetOf() }
         override fun compatibleCabs(origin: String) = cabs.filterValues { it == styles[origin] }.keys.toList()
         override fun isEmpty(cab: String) = people(cab).isEmpty()
-        override fun prepare(origin: String, destination: String, cab: String) {
+        override fun prepare(origin: String?, destination: String, cab: String) {
             if (prepareFailure) error("cannot load destination")
         }
-        override fun release(origin: String, destination: String, cab: String) { released.add(cab) }
+        override fun release(origin: String?, destination: String, cab: String) { released.add(cab) }
         override fun closeSelections(floor: String, interrupt: Boolean) { effects.add("selection:$floor:$interrupt") }
         override fun openDoors(floor: String) { effects.add("open:$floor") }
         override fun closeDoors(floor: String, closed: () -> Unit): ElevatorTask = Callback(closed).also { closing[floor] = it }
@@ -39,6 +39,10 @@ class ElevatorTravelCoordinatorTest {
             people(origin).clear()
             return people.size
         }
+        override fun boardInPlace(cab: String): Int {
+            effects.add("boardInPlace:$cab")
+            return people(cab).size
+        }
         override fun afterTravel(arrive: () -> Unit): ElevatorTask = Callback(arrive).also { arrivals.add(it) }
         override fun arrive(cab: String, destination: String) {
             if (arrivalFailure) error("arrival failed")
@@ -46,7 +50,7 @@ class ElevatorTravelCoordinatorTest {
             people(destination).addAll(people(cab))
             people(cab).clear()
         }
-        override fun failed(origin: String, failure: Exception) { effects.add("failed:$origin") }
+        override fun failed(origin: String?, cab: String, failure: Exception) { effects.add("failed:$origin:$cab") }
     }
 
     private val world = World()
@@ -181,5 +185,42 @@ class ElevatorTravelCoordinatorTest {
         assertEquals(setOf("stone1", "stone2"), world.released.toSet())
         assertFalse(travel.uses("stone1"))
         assertFalse(travel.uses("stone2"))
+    }
+
+    @Test fun `stranded occupants travel from their idle cab and arrive like ordinary travel`() {
+        world.people("stone1").add("stranded")
+        world.people("a2").add("selecting")
+        travel.start("a2", "a3")
+        val stale = world.closing.getValue("a2")
+        assertEquals(ElevatorDepartureResult.STARTED, travel.startFromCab("stone1", "a2"))
+        assertTrue(travel.uses("stone1"))
+        assertTrue(travel.involves("a2"))
+        assertEquals(ElevatorDepartureResult.BUSY, travel.startFromCab("stone1", "a3"))
+        world.arrivals.single().fire()
+        assertTrue(stale.cancelled)
+        assertEquals(setOf("stranded", "selecting"), world.people("a2"))
+        assertFalse(travel.uses("stone1"))
+        assertEquals("open:a2", world.effects.last())
+    }
+
+    @Test fun `cab start with nobody inside or failing preparation releases the cab`() {
+        assertEquals(ElevatorDepartureResult.FAILED, travel.startFromCab("stone1", "a2"))
+        assertFalse(travel.uses("stone1"))
+        world.people("stone1").add("stranded")
+        world.prepareFailure = true
+        assertEquals(ElevatorDepartureResult.FAILED, travel.startFromCab("stone1", "a2"))
+        assertFalse(travel.uses("stone1"))
+        assertEquals(listOf("stone1", "stone1"), world.released)
+        assertEquals("failed:null:stone1", world.effects.last())
+        assertTrue(world.arrivals.isEmpty())
+    }
+
+    @Test fun `shutdown cancels cab-start travel`() {
+        world.people("stone1").add("stranded")
+        travel.startFromCab("stone1", "a2")
+        travel.shutdown()
+        world.arrivals.single().fire()
+        assertEquals(setOf("stranded"), world.people("stone1"))
+        assertFalse(travel.uses("stone1"))
     }
 }
