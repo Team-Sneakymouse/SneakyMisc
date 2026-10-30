@@ -1,13 +1,11 @@
-## Agent skills
+# Agent instructions
 
-### Issue tracker
+Resolve shared policy using `.team-policy/pointer.json` (paths relative to this repository). Clone the configured remote into the first candidate if missing; otherwise fetch and fast-forward the tracked branch when safe. Report blocked updates.
 
-Issues and PRDs are tracked as local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+Before implementing, read the resolved checkout's `README.md` and follow its linked guidance relevant to the task.
 
-### Triage labels
+When working with issues or PRDs, read `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`.
 
-Uses the default five triage status strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Before exploring domain behavior, read `docs/agents/domain.md`.
 
-### Domain docs
-
-Single-context repo: root `CONTEXT.md` plus root `docs/adr/`. See `docs/agents/domain.md`.
+When changing configured-world generation or its bootstrap lifecycle, read `docs/custom-worlds.md`.
