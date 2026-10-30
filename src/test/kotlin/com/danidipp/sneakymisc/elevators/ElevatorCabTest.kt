@@ -12,7 +12,8 @@ class ElevatorCabTest {
         val cab = ElevatorCab.at(Location(world, .5, 60.0, .5))
         assertTrue(cab.contains(Location(world, -1.99, 60.0, 2.99)))
         assertFalse(cab.contains(Location(world, .5, 59.99, .5)))
-        assertFalse(cab.contains(Location(world, .5, 64.0, .5)))
+        assertTrue(cab.contains(Location(world, .5, 64.99, .5)))
+        assertFalse(cab.contains(Location(world, .5, 65.0, .5)))
         assertFalse(cab.contains(Location(world, .5, 60.0, 3.0)))
         val otherWorld = mock(World::class.java) // Location only weakly references its world.
         assertFalse(cab.contains(Location(otherWorld, .5, 60.0, .5)))

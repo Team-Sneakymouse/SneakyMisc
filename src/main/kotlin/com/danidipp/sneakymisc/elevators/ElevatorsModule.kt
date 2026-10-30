@@ -5,6 +5,7 @@ import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.elevators.commands.*
 import org.bukkit.*
+import org.bukkit.block.data.Levelled
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.ItemFrame
 import org.bukkit.entity.Player
@@ -29,6 +30,8 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         val TRANSIT_KEYPAD = NamespacedKey("sneakymisc", "elevator_transit_keypad")
         val CONTROL_MODE = NamespacedKey("sneakymisc", "elevator_control_mode")
         const val SONG_DURATION = 310L
+        private const val TRAVEL_LIGHT_LEVEL = 15
+        private const val IDLE_LIGHT_LEVEL = 1
     }
 
     private val configFile = File(plugin.dataFolder, "elevators.yml")
@@ -63,6 +66,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             origin?.ensureDoors()
             destination.ensureDoors()
             cab.initialize()
+            setLights(cab.cab, TRAVEL_LIGHT_LEVEL)
             // Travel from inside a transit cab has no departure height, so it picks a random direction.
             val movementY = if (origin == null) listOf(-1.0, 1.0).random()
             else -destination.location.y.compareTo(origin.location.y).toDouble()
@@ -70,6 +74,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         }
         override fun release(origin: ElevatorFloor?, destination: ElevatorFloor, cab: ElevatorTransitCab) {
             particles.remove(cab)?.stop()
+            setLights(cab.cab, IDLE_LIGHT_LEVEL)
             for (chunk in leases.remove(cab).orEmpty()) {
                 val remaining = (chunkUsers[chunk] ?: 1) - 1
                 if (remaining == 0) {
@@ -216,6 +221,20 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         return moved
     }
 
+    /**
+     * Light blocks are found again on every call instead of being remembered between rides. A crash mid-ride leaves
+     * them bright until the cab's next ride ends.
+     */
+    private fun setLights(cab: ElevatorCab, level: Int) {
+        for (block in cab.blocks()) {
+            if (block.type != Material.LIGHT) continue
+            val light = block.blockData as Levelled
+            if (light.level == level) continue
+            light.level = level
+            block.setBlockData(light, false)
+        }
+    }
+
     private fun chunks(cab: ElevatorCab): List<Chunk> {
         val min = cab.location.clone().add(-3.0, 0.0, -3.0)
         val max = cab.location.clone().add(3.0, 0.0, 3.0)
@@ -314,7 +333,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         cab: ElevatorCab,
         existing: List<ElevatorCab> = elevators.values.flatMap { it.getFloors().map { floor -> floor.cab } } + transitCabs.values.map { it.cab },
     ) {
-        require(cab.location.y >= cab.location.world.minHeight && cab.location.y + 4 <= cab.location.world.maxHeight) { "Cab is outside world height limits" }
+        require(cab.location.y >= cab.location.world.minHeight && cab.location.y + ElevatorCab.HEIGHT <= cab.location.world.maxHeight) { "Cab is outside world height limits" }
         require(existing.none { it.overlaps(cab) }) { "Cab interior overlaps an existing elevator floor or transit cab" }
     }
 

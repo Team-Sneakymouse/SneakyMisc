@@ -6,6 +6,8 @@ import java.util.logging.Logger
 import kotlin.test.*
 import org.bukkit.*
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.block.Block
+import org.bukkit.block.data.type.Light
 import org.bukkit.entity.Player
 import org.bukkit.entity.ItemFrame
 import org.bukkit.inventory.Inventory
@@ -29,6 +31,7 @@ class ElevatorsModuleTest {
         val particleTasks = mutableListOf<BukkitTask>()
         val callbacks = mutableListOf<Runnable>()
         val accounts = mutableListOf<Player>()
+        val blocks = mutableMapOf<Triple<Int, Int, Int>, Block>()
         val logger = Logger.getLogger("elevators-test")
         init {
             `when`(plugin.dataFolder).thenReturn(directory)
@@ -37,6 +40,11 @@ class ElevatorsModuleTest {
             `when`(world.minHeight).thenReturn(-64)
             `when`(world.maxHeight).thenReturn(320)
             `when`(world.players).thenAnswer { accounts.toList() }
+            `when`(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer {
+                blocks.getOrPut(Triple(it.getArgument(0), it.getArgument(1), it.getArgument(2))) {
+                    mock(Block::class.java).also { block -> `when`(block.type).thenReturn(Material.AIR) }
+                }
+            }
             val chunk = mock(Chunk::class.java)
             `when`(world.getChunkAt(anyInt(), anyInt())).thenReturn(chunk)
             `when`(scheduler.runTaskLater(eq(plugin), any(Runnable::class.java), anyLong())).thenAnswer {
@@ -55,6 +63,18 @@ class ElevatorsModuleTest {
             `when`(player.teleport(any(Location::class.java))).thenAnswer { current = it.getArgument(0); true }
             accounts.add(player)
             return player
+        }
+        /** Places a light block whose level reads back what was last written. */
+        fun light(x: Int, y: Int, z: Int, level: Int): Light {
+            var current = level
+            val data = mock(Light::class.java)
+            `when`(data.level).thenAnswer { current }
+            doAnswer { current = it.getArgument(0); null }.`when`(data).level = anyInt()
+            val block = mock(Block::class.java)
+            `when`(block.type).thenReturn(Material.LIGHT)
+            `when`(block.blockData).thenReturn(data)
+            blocks[Triple(x, y, z)] = block
+            return data
         }
         fun floor(module: ElevatorsModule, label: String, x: Double, y: Double = 60.0): ElevatorFloor {
             val floor = mock(ElevatorFloor::class.java)
@@ -433,6 +453,50 @@ class ElevatorsModuleTest {
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
+    @Test fun `transit cab interior lights are bright during travel and dim afterwards`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                val origin = f.floor(module, "1", .5)
+                val destination = f.floor(module, "2", 20.5, 80.0)
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                val transit = module.getTransitCabs().single()
+                // Interior corners at floor and top layer, plus the ceiling and a wall just outside.
+                val inside = listOf(f.light(98, -40, -2, 1), f.light(102, -36, 2, 7), f.light(100, -38, 0, 15))
+                val ceiling = f.light(100, -35, 0, 3)
+                val wall = f.light(103, -38, 0, 3)
+                fun assertLevels(level: Int) {
+                    inside.forEach { assertEquals(level, it.level) }
+                    assertEquals(3, ceiling.level)
+                    assertEquals(3, wall.level)
+                }
+
+                f.player(origin.location.clone())
+                var closed: (() -> Unit)? = null
+                doAnswer { call -> closed = call.getArgument(0); ElevatorTask {} }.`when`(origin).close(callbackMatcher())
+                assertEquals(ElevatorDepartureResult.STARTED, module.travel.start(origin, destination))
+                assertLevels(15)
+                verify(f.blocks.getValue(Triple(98, -40, -2))).setBlockData(inside[0], false)
+                verify(f.blocks.getValue(Triple(100, -38, 0)), never()).setBlockData(any(), anyBoolean())
+                closed!!()
+                f.callbacks.last().run()
+                assertTrue(module.travel.isIdle())
+                assertLevels(1)
+
+                // Travel from inside the cab has no boarding teleport but still lights up.
+                val rider = f.player(transit.cab.location.clone())
+                module.startRandomTransit(rider, transit)
+                assertTrue(module.travel.uses(transit))
+                assertLevels(15)
+                module.onDisable(org.bukkit.event.server.PluginDisableEvent(f.plugin))
+                assertLevels(1)
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
     @Test fun `transit sparkles oppose elevator height direction skip empty cabs and stop on shutdown`() {
         for (destinationY in listOf(40.0, 60.0, 80.0)) {
             val f = Fixture()
@@ -488,7 +552,7 @@ class ElevatorsModuleTest {
         }
     }
 
-    @Test fun `transit trails accelerate over the ride within a particle volume one block taller`() {
+    @Test fun `transit trails accelerate over the ride within the cab interior`() {
         for (movementY in listOf(-1.0, 1.0)) {
             val f = Fixture()
             try {

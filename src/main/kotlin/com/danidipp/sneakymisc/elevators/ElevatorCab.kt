@@ -1,17 +1,25 @@
 package com.danidipp.sneakymisc.elevators
 
 import org.bukkit.Location
+import org.bukkit.block.Block
 import org.bukkit.entity.Player
 import kotlin.math.floor
 import kotlin.math.round
 
-/** Fixed five-by-five interior, four blocks high. The anchor is the center at feet level. */
+/** Fixed five-by-five interior, five blocks high. The anchor is the center at feet level. */
 class ElevatorCab(val location: Location) {
     fun contains(position: Location): Boolean {
         if (position.world != location.world) return false
         val offset = position.toVector().subtract(location.toVector())
         return offset.x >= -2.5 && offset.x < 2.5 &&
-            offset.z >= -2.5 && offset.z < 2.5 && offset.y >= 0.0 && offset.y < 4.0
+            offset.z >= -2.5 && offset.z < 2.5 && offset.y >= 0.0 && offset.y < HEIGHT
+    }
+
+    /** Every block of the interior, excluding walls, floor and ceiling. */
+    fun blocks(): List<Block> = (-2..2).flatMap { x ->
+        (0 until HEIGHT.toInt()).flatMap { y ->
+            (-2..2).map { z -> location.world.getBlockAt(location.blockX + x, location.blockY + y, location.blockZ + z) }
+        }
     }
 
     fun players(): List<Player> = location.world.players.filter { contains(it.location) }
@@ -29,9 +37,11 @@ class ElevatorCab(val location: Location) {
     fun overlaps(other: ElevatorCab): Boolean = location.world == other.location.world &&
         kotlin.math.abs(location.x - other.location.x) < 5.0 &&
         kotlin.math.abs(location.z - other.location.z) < 5.0 &&
-        location.y < other.location.y + 4.0 && other.location.y < location.y + 4.0
+        location.y < other.location.y + HEIGHT && other.location.y < location.y + HEIGHT
 
     companion object {
+        const val HEIGHT = 5.0
+
         fun at(position: Location): ElevatorCab = ElevatorCab(position.clone().apply {
             x = floor(x) + 0.5
             y = floor(y)
