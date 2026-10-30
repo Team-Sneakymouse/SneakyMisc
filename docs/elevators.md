@@ -35,7 +35,7 @@ Place transit cabs beyond the configured proximity voice range of **both ordinar
 | Command | Purpose |
 | --- | --- |
 | `/elevator list` | List elevators, styles, and elevator floors |
-| `/elevator reload` | Re-read `elevators.yml`; refused while any elevator travel is active. Closes open keypads and rebuilds doors |
+| `/elevator reload` | Re-read `elevators.yml`. The file is read in the background and the result is reported when it is applied. Refused while any elevator travel is active or another reload is running; cancelled if travel starts during the read. Closes open keypads and rebuilds doors |
 | `/elevator style <name> <style>` | Change an inactive elevator's style |
 | `/elevator delete <name>` | Delete an inactive elevator and its animated doors |
 | `/elevator call <name-floor>` | Open an elevator floor, cancelling an uncommitted departure |
@@ -52,7 +52,7 @@ Elevator and transit-cab names accept letters, digits, and underscores. Styles a
 
 Elevator and transit-cab commands need `sneakymisc.elevator`; elevator-floor commands need `sneakymisc.elevatorfloor`. Ordinary control use needs no management permission.
 
-Setup is stored in `plugins/SneakyMisc/elevators.yml`. The file only accepts canonical labels (no aliases). If it is invalid, for example a `0`, `1`, `B`, or `B0` floor, only elevators are disabled at startup and the error is logged; the rest of SneakyMisc loads normally. A failed `/elevator reload` keeps the running elevators. Either way, changes are blocked until a reload succeeds so the file is not overwritten. Fix the file and run `/elevator reload`. Legacy `elevator.yml` is ignored; recreate existing elevators. Active elevator travel and passenger information are not persisted. Interrupted or stranded occupants can use `/spawn`. Physically occupied transit cabs are skipped until empty.
+Setup is stored in `plugins/SneakyMisc/elevators.yml`. The file only accepts canonical labels (no aliases). Optional sections (`floors`, `restricted-floors`, `transit-cabs`) may be left out, but a value of the wrong type, such as `floors` written as a list or `restricted-floors: G` instead of a list, is an error and is never read as empty. Every `restricted-floors` entry must name a floor of that elevator. If the file is invalid, for example a `0`, `1`, `B`, or `B0` floor, only elevators are disabled at startup and the error is logged; the rest of SneakyMisc loads normally. A failed `/elevator reload`, including one where the file is missing, keeps the running elevators and their restrictions. Either way, changes are blocked until a reload succeeds so the file is not overwritten. Changes are also blocked while a reload is running. Fix the file and run `/elevator reload`. Legacy `elevator.yml` is ignored; recreate existing elevators. Active elevator travel and passenger information are not persisted. Interrupted or stranded occupants can use `/spawn`. Physically occupied transit cabs are skipped until empty.
 
 ## Transit keypads
 

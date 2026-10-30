@@ -6,6 +6,8 @@ import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.elevators.commands.*
 import org.bukkit.*
 import org.bukkit.block.data.Levelled
+import org.bukkit.configuration.ConfigurationSection
+import org.bukkit.configuration.InvalidConfigurationException
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.ItemFrame
 import org.bukkit.entity.Player
@@ -17,6 +19,7 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.server.PluginDisableEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
+import org.bukkit.plugin.IllegalPluginAccessException
 import org.bukkit.plugin.Plugin
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import java.io.File
@@ -44,6 +47,8 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     private var stopped = false
     /** Set when elevators.yml could not be read. Saving is blocked so the file is not overwritten. */
     private var configError: String? = null
+    /** True from the start of [reload] until its result is applied on the server thread. */
+    private var reloading = false
     private val utils = ElevatorCommandUtils(this)
     override val commands = listOf(
         SneakyMiscCommand(ElevatorCommands(this, utils).build(), "Manage elevators"),
@@ -123,19 +128,25 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     })
 
     init {
-        loadConfig()?.let { logger.severe("Elevators are disabled until elevators.yml is fixed and /elevator reload is run") }
+        // Plugin enable runs before the server ticks, so this one synchronous read blocks no gameplay.
+        applyConfig(runCatching { readConfigText() })
+            ?.let { logger.severe("Elevators are disabled until elevators.yml is fixed and /elevator reload is run") }
         if (File(plugin.dataFolder, "elevator.yml").exists()) {
             logger.info("Legacy elevator.yml is ignored. Set up elevators using /elevator create and /elevatorfloor create.")
         }
     }
 
+    /** Contents of elevators.yml, or null if it does not exist. Plain file I/O, so it is safe off the server thread. */
+    private fun readConfigText(): String? = if (configFile.exists()) configFile.readText() else null
+
     /**
-     * Reads elevators.yml and replaces the running setup. If the file is invalid, the running setup is kept
-     * (empty at startup), saving is blocked, and the error is returned.
+     * Parses [text] (from [readConfigText]) and replaces the running setup. Must run on the server thread because
+     * parsing resolves worlds. If the file is unreadable or invalid, the running setup is kept (empty at startup),
+     * saving is blocked, and the error is returned.
      */
-    private fun loadConfig(beforeApply: () -> Unit = {}): String? {
+    private fun applyConfig(text: Result<String?>, beforeApply: () -> Unit = {}): String? {
         val (loadedElevators, loadedCabs) = try {
-            parseConfig()
+            parseConfig(text.getOrThrow())
         } catch (failure: Exception) {
             val message = failure.message ?: failure.javaClass.simpleName
             configError = message
@@ -152,56 +163,122 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         return null
     }
 
-    private fun parseConfig(): Pair<Map<String, Elevator>, Map<String, ElevatorTransitCab>> {
+    /**
+     * Validates the whole file before anything is applied. Optional sections and lists may be absent, but a value
+     * of the wrong type is an error rather than being read as empty.
+     */
+    private fun parseConfig(text: String?): Pair<Map<String, Elevator>, Map<String, ElevatorTransitCab>> {
         val loadedElevators = linkedMapOf<String, Elevator>()
         val loadedCabs = linkedMapOf<String, ElevatorTransitCab>()
-        if (!configFile.exists()) return loadedElevators to loadedCabs
-        val config = YamlConfiguration.loadConfiguration(configFile)
-        require(config.getInt("version") == 2) { "Unsupported elevators.yml version" }
+        if (text == null) return loadedElevators to loadedCabs
+        val config = YamlConfiguration()
+        try {
+            config.loadFromString(text)
+        } catch (failure: InvalidConfigurationException) {
+            throw IllegalArgumentException("elevators.yml is not valid YAML: ${failure.message}", failure)
+        }
+        require(config.isInt("version") && config.getInt("version") == 2) { "Unsupported elevators.yml version" }
         val occupied = mutableListOf<ElevatorCab>()
-        for (name in config.getConfigurationSection("elevators")?.getKeys(false).orEmpty()) {
+        for (name in optionalSection(config, "elevators")?.getKeys(false).orEmpty()) {
             requireName(name)
-            val section = requireNotNull(config.getConfigurationSection("elevators.$name"))
-            val elevator = Elevator(name, requireStyle(requireNotNull(section.getString("style")) { "Elevator $name has no style" }))
+            val section = requiredSection(config, "elevators.$name")
+            val elevator = Elevator(name, requireStyle(requiredString(section, "style")))
             loadedElevators[name] = elevator
-            for (label in section.getConfigurationSection("floors")?.getKeys(false).orEmpty()) {
+            for (label in optionalSection(section, "floors")?.getKeys(false).orEmpty()) {
                 require(ElevatorFloorLabels.isCanonical(label)) { "Invalid floor $name-$label. ${ElevatorFloorLabels.RULE}" }
                 val cab = ElevatorCab.at(requireNotNull(section.getLocation("floors.$label")) { "Floor $name-$label has no valid location" })
                 requireAvailable(cab, occupied)
                 occupied.add(cab)
                 elevator.addFloor(ElevatorFloor("$name-$label", cab, elevator))
             }
-            for (label in section.getStringList("restricted-floors")) {
+            for (label in optionalLabelList(section, "restricted-floors")) {
                 require(ElevatorFloorLabels.isCanonical(label)) { "Invalid restricted floor $name-$label. ${ElevatorFloorLabels.RULE}" }
-                if (elevator.getFloor("$name-$label") != null) elevator.setRestricted("$name-$label", true)
+                // A restriction must never be dropped silently, so it has to name a floor in this file.
+                require(elevator.getFloor("$name-$label") != null) { "Restricted floor $name-$label does not exist" }
+                elevator.setRestricted("$name-$label", true)
             }
         }
-        for (name in config.getConfigurationSection("transit-cabs")?.getKeys(false).orEmpty()) {
+        for (name in optionalSection(config, "transit-cabs")?.getKeys(false).orEmpty()) {
             requireName(name)
-            val section = requireNotNull(config.getConfigurationSection("transit-cabs.$name"))
+            val section = requiredSection(config, "transit-cabs.$name")
             val cab = ElevatorCab.at(requireNotNull(section.getLocation("location")) { "Transit cab $name has no valid location" })
             requireAvailable(cab, occupied)
             occupied.add(cab)
-            loadedCabs[name] = ElevatorTransitCab(name, requireStyle(requireNotNull(section.getString("style")) { "Transit cab $name has no style" }), cab)
+            loadedCabs[name] = ElevatorTransitCab(name, requireStyle(requiredString(section, "style")), cab)
         }
         return loadedElevators to loadedCabs
     }
 
-    /** Re-reads elevators.yml. Refuses while any elevator travel is active. */
-    fun reload(): String {
+    private fun pathOf(parent: ConfigurationSection, path: String) =
+        if (parent.currentPath.isNullOrEmpty()) path else "${parent.currentPath}.$path"
+
+    /** Null when absent; an error when present but not a section. */
+    private fun optionalSection(parent: ConfigurationSection, path: String): ConfigurationSection? {
+        if (!parent.isSet(path)) return null
+        return requiredSection(parent, path)
+    }
+
+    private fun requiredSection(parent: ConfigurationSection, path: String): ConfigurationSection =
+        requireNotNull(parent.getConfigurationSection(path)) { "${pathOf(parent, path)} must be a section" }
+
+    private fun requiredString(parent: ConfigurationSection, path: String): String {
+        require(parent.isString(path)) { "${pathOf(parent, path)} must be text" }
+        return parent.getString(path)!!
+    }
+
+    /** Empty when absent; an error when present but not a list of labels. Unquoted numbers (`- 2`) count as labels. */
+    private fun optionalLabelList(parent: ConfigurationSection, path: String): List<String> {
+        if (!parent.isSet(path)) return emptyList()
+        require(parent.isList(path)) { "${pathOf(parent, path)} must be a list" }
+        return parent.getList(path)!!.map {
+            require(it is String || it is Int) { "${pathOf(parent, path)} entries must be floor labels, found $it" }
+            it.toString()
+        }
+    }
+
+    /**
+     * Re-reads elevators.yml. Only the file read runs off the server thread; parsing (which resolves worlds),
+     * validation and applying happen back on it. [done] receives the outcome on the server thread. Refuses while
+     * any elevator travel is active or another reload is running, and blocks edits until it finishes.
+     */
+    fun reload(done: (String) -> Unit) {
         require(!stopped) { "Elevators are currently stopped" }
+        require(!reloading) { "A reload is already running" }
         require(travel.isIdle()) { "Wait until all elevator travel has finished" }
+        reloading = true
+        val scheduler = Bukkit.getScheduler()
+        try {
+            scheduler.runTaskAsynchronously(plugin, Runnable {
+                val text = runCatching { readConfigText() }
+                try {
+                    scheduler.runTask(plugin, Runnable { done(finishReload(text)) })
+                } catch (_: IllegalPluginAccessException) {
+                    // The plugin was disabled during the read. There is nothing left to apply to.
+                }
+            })
+        } catch (failure: RuntimeException) {
+            reloading = false
+            throw failure
+        }
+    }
+
+    private fun finishReload(text: Result<String?>): String {
+        reloading = false
+        if (stopped) return "Elevators stopped before the reload finished"
+        // Travel can start while the file is read. Tearing it down would strand passengers, so start over instead.
+        if (!travel.isIdle()) return "Reload cancelled: elevator travel started while elevators.yml was read. Run /elevator reload again."
         // The old setup is only torn down once the new file has parsed, so a bad file leaves running elevators alone.
-        val error = loadConfig {
+        val error = applyConfig(text.mapCatching { requireNotNull(it) { "elevators.yml not found" } }) {
             guis.toList().forEach { it.invalidate(); it.inventory.close() }
             getElevators().flatMap { it.getFloors() }.forEach { it.cleanup() }
             transitCabs.values.forEach { it.cleanup() }
         }
-        require(error == null) { "Reload failed: $error. Current elevators keep running, but changes are blocked until a reload succeeds." }
-        return "Reloaded ${elevators.size} elevators and ${transitCabs.size} transit cabs"
+        return if (error == null) "Reloaded ${elevators.size} elevators and ${transitCabs.size} transit cabs"
+        else "Reload failed: $error. Current elevators keep running, but changes are blocked until a reload succeeds."
     }
 
     private fun requireWritable() {
+        require(!reloading) { "A reload is running. Try again once it finishes." }
         configError?.let { throw IllegalArgumentException("elevators.yml failed to load ($it). Fix it and run /elevator reload before making changes.") }
     }
 

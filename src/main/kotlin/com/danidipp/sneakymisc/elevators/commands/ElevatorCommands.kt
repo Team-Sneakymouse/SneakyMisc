@@ -10,7 +10,13 @@ internal class ElevatorCommands(private val module: ElevatorsModule, private val
     fun build(): LiteralCommandNode<CommandSourceStack> = Commands.literal("elevator")
         .requires { it.sender.hasPermission("sneakymisc.elevator") }
         .executes { utils.fail(it, "Usage: /elevator <create|style|delete|list|call|reload>") }
-        .then(Commands.literal("reload").executes { context -> utils.attempt(context) { module.reload() } })
+        .then(Commands.literal("reload").executes { context ->
+            utils.attempt(context) {
+                val sender = context.source.sender
+                module.reload { sender.sendMessage(it) }
+                "Reloading elevators.yml..."
+            }
+        })
         .then(Commands.literal("list").executes { context ->
             module.getElevators().forEach { context.source.sender.sendMessage(it.formatComponent()) }; 1
         })

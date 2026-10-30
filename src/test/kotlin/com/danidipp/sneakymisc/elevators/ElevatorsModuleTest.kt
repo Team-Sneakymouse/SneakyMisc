@@ -54,6 +54,27 @@ class ElevatorsModuleTest {
                 particleTicks.add(it.getArgument(1))
                 mock(BukkitTask::class.java).also { task -> particleTasks.add(task) }
             }
+            `when`(scheduler.runTaskAsynchronously(eq(plugin), any(Runnable::class.java))).thenAnswer {
+                asyncTasks.add(it.getArgument(1)); mock(BukkitTask::class.java)
+            }
+            `when`(scheduler.runTask(eq(plugin), any(Runnable::class.java))).thenAnswer {
+                mainTasks.add(it.getArgument(1)); mock(BukkitTask::class.java)
+            }
+        }
+        val asyncTasks = mutableListOf<Runnable>()
+        val mainTasks = mutableListOf<Runnable>()
+        /** Runs a complete reload: the off-thread read, then the server-thread apply. Returns the reported outcome. */
+        fun reload(module: ElevatorsModule): String {
+            val results = mutableListOf<String>()
+            module.reload { results.add(it) }
+            asyncTasks.removeAt(0).run()
+            mainTasks.removeAt(0).run()
+            return results.single()
+        }
+        /** Rewrites one value in the saved elevators.yml, as a hand edit would. */
+        fun editConfig(path: String, value: Any?) {
+            val file = directory.resolve("elevators.yml")
+            YamlConfiguration.loadConfiguration(file).apply { set(path, value) }.save(file)
         }
         fun player(position: Location): Player {
             val player = mock(Player::class.java)
@@ -169,6 +190,7 @@ class ElevatorsModuleTest {
         `when`(floor.id).thenReturn(id)
         `when`(floor.cab).thenReturn(cab)
         `when`(floor.location).thenReturn(cab.location)
+        `when`(floor.elevator).thenReturn(context.arguments()[2] as Elevator)
     }
 
     @Test fun `floor creation rejects floor 0 plain B and B0 and stores aliases canonically`() {
@@ -199,6 +221,7 @@ class ElevatorsModuleTest {
         try {
             mockStatic(Bukkit::class.java).use { bukkit ->
                 bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
                 f.floorConstruction().use {
                     ElevatorsModule(f.logger, f.plugin).apply {
                         createElevator("tower", "stone")
@@ -213,7 +236,7 @@ class ElevatorsModuleTest {
                         assertFailsWith<IllegalArgumentException> { module.createElevator("other", "stone") }
                         assertEquals(good.replace("G:", "'$label':"), file.readText(), "Config was overwritten for $label")
                         file.writeText(good)
-                        assertEquals("Reloaded 1 elevators and 0 transit cabs", module.reload())
+                        assertEquals("Reloaded 1 elevators and 0 transit cabs", f.reload(module))
                         assertEquals("tower-G", module.getFloor("tower-G")?.id)
                         module.createElevator("other", "stone")
                         module.deleteElevator(module.getElevator("other")!!)
@@ -228,6 +251,7 @@ class ElevatorsModuleTest {
         try {
             mockStatic(Bukkit::class.java).use { bukkit ->
                 bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
                 f.floorConstruction().use { floors ->
                     val module = ElevatorsModule(f.logger, f.plugin)
                     module.createElevator("tower", "stone")
@@ -235,12 +259,159 @@ class ElevatorsModuleTest {
                     val file = f.directory.resolve("elevators.yml")
                     val broken = file.readText().replace("G:", "'0':")
                     file.writeText(broken)
-                    assertFailsWith<IllegalArgumentException> { module.reload() }
+                    assertTrue(f.reload(module).startsWith("Reload failed: Invalid floor tower-0"))
                     assertEquals("tower-G", module.getFloor("tower-G")?.id)
                     verify(floors.constructed().first(), never()).cleanup()
                     assertFailsWith<IllegalArgumentException> { module.createElevator("other", "stone") }
                     assertEquals(broken, file.readText())
                 }
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `wrong config types are rejected instead of read as empty and keep setup and restrictions`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                bukkit.`when`<World> { Bukkit.getWorld("world") }.thenReturn(f.world)
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                f.floorConstruction().use { floors ->
+                    val module = ElevatorsModule(f.logger, f.plugin)
+                    module.createElevator("tower", "stone")
+                    module.setRestricted(module.createFloor("tower-G", Location(f.world, .5, 60.0, .5)), true)
+                    module.createFloor("tower-2", Location(f.world, 10.5, 60.0, .5))
+                    module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                    val file = f.directory.resolve("elevators.yml")
+                    val good = file.readText()
+                    val edits: List<Pair<String, (Fixture) -> Unit>> = listOf(
+                        // Restrictions are removed too, so only the floors type check can reject these.
+                        "floors as a list (review repro)" to { it.editConfig("elevators.tower.restricted-floors", null); it.editConfig("elevators.tower.floors", listOf("G")) },
+                        "floors as text" to { it.editConfig("elevators.tower.restricted-floors", null); it.editConfig("elevators.tower.floors", "G") },
+                        "restricted-floors as text" to { it.editConfig("elevators.tower.restricted-floors", "G") },
+                        "restricted-floors as a section" to { it.editConfig("elevators.tower.restricted-floors", mapOf("G" to true)) },
+                        "restricted-floors entry not a label" to { it.editConfig("elevators.tower.restricted-floors", listOf(listOf("G"))) },
+                        "restricted floor missing" to { it.editConfig("elevators.tower.restricted-floors", listOf("B5")) },
+                        "elevators as a list" to { it.editConfig("elevators", listOf("tower")) },
+                        "elevator as text" to { it.editConfig("elevators.tower", "stone") },
+                        "style as a list" to { it.editConfig("elevators.tower.style", listOf("stone")) },
+                        "transit-cabs as text" to { it.editConfig("transit-cabs", "stone1") },
+                        "transit cab as a list" to { it.editConfig("transit-cabs.stone1", listOf("stone")) },
+                        "version as text" to { it.editConfig("version", "2") },
+                        "invalid YAML" to { _ -> file.writeText("version: 2\nelevators: [unclosed\n") },
+                    )
+                    for ((case, edit) in edits) {
+                        val ground = module.getFloor("tower-G")!!
+                        val second = module.getFloor("tower-2")!!
+                        edit(f)
+                        val edited = file.readText()
+                        assertTrue(f.reload(module).startsWith("Reload failed: "), case)
+                        // The running setup, including the restriction, is untouched.
+                        assertSame(ground, module.getFloor("tower-G"), case)
+                        assertSame(second, module.getFloor("tower-2"), case)
+                        assertTrue(module.getElevator("tower")!!.isRestricted("tower-G"), case)
+                        assertEquals(1, module.getTransitCabs().size, case)
+                        verify(ground, never()).cleanup()
+                        verify(second, never()).cleanup()
+                        // Edits stay blocked and the hand-edited file is not overwritten.
+                        assertFailsWith<IllegalArgumentException>(case) { module.setRestricted(ground, false) }
+                        assertFailsWith<IllegalArgumentException>(case) { module.createElevator("other", "stone") }
+                        assertEquals(edited, file.readText(), case)
+                        // Restoring the file recovers.
+                        file.writeText(good)
+                        assertEquals("Reloaded 1 elevators and 1 transit cabs", f.reload(module), case)
+                        verify(ground).cleanup()
+                        assertTrue(module.getElevator("tower")!!.isRestricted("tower-G"), case)
+                        assertNotNull(module.getFloor("tower-2"), case)
+                    }
+                    module.createElevator("other", "stone")
+                    // Absent optional sections are still fine.
+                    file.writeText("version: 2\nelevators:\n  tower:\n    style: stone\n")
+                    assertEquals("Reloaded 1 elevators and 0 transit cabs", f.reload(module))
+                    assertTrue(module.getElevator("tower")!!.getFloors().isEmpty())
+                    assertTrue(floors.constructed().isNotEmpty())
+                }
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `reload reads the file off the server thread and applies it on the server thread`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                f.floorConstruction().use {
+                    val module = ElevatorsModule(f.logger, f.plugin)
+                    module.createElevator("tower", "stone")
+                    val file = f.directory.resolve("elevators.yml")
+                    val results = mutableListOf<String>()
+                    module.reload { results.add(it) }
+                    // Nothing is read or applied on the calling thread.
+                    assertEquals(1, f.asyncTasks.size)
+                    assertTrue(f.mainTasks.isEmpty())
+                    // Overlapping reloads and edits are refused while the read is pending.
+                    assertFailsWith<IllegalArgumentException> { module.reload { results.add(it) } }
+                    assertFailsWith<IllegalArgumentException> { module.createElevator("other", "stone") }
+                    // The file is read by the async task, not before it.
+                    f.editConfig("elevators.tower.style", "brick")
+                    f.asyncTasks.removeAt(0).run()
+                    assertEquals("stone", module.getElevator("tower")!!.style)
+                    assertTrue(results.isEmpty())
+                    f.mainTasks.removeAt(0).run()
+                    assertEquals(listOf("Reloaded 1 elevators and 0 transit cabs"), results)
+                    assertEquals("brick", module.getElevator("tower")!!.style)
+                    module.createElevator("other", "stone")
+                    // A missing file on reload is a failure, not an empty setup.
+                    file.delete()
+                    assertTrue(f.reload(module).startsWith("Reload failed: elevators.yml not found"))
+                    assertNotNull(module.getElevator("tower"))
+                    assertFailsWith<IllegalArgumentException> { module.createElevator("third", "stone") }
+                }
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `reload is cancelled without changes if travel starts during the read`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                bukkit.`when`<World> { Bukkit.getWorld(NamespacedKey.minecraft("overworld")) }.thenReturn(f.world)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                val origin = f.floor(module, "G", .5)
+                f.floor(module, "2", 20.5)
+                val passenger = f.player(origin.location.clone())
+                val results = mutableListOf<String>()
+                module.reload { results.add(it) }
+                f.asyncTasks.removeAt(0).run()
+                assertNull(module.select(passenger, origin, "2"))
+                assertTrue(module.travel.isDeparting(origin))
+                f.mainTasks.removeAt(0).run()
+                assertTrue(results.single().startsWith("Reload cancelled"))
+                assertSame(origin, module.getFloor("tower-G"))
+                verify(origin, never()).cleanup()
+                // A cancelled reload is not a config error, so edits work again.
+                module.createElevator("other", "stone")
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `plugin disable during the read leaves nothing to apply`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                val results = mutableListOf<String>()
+                module.reload { results.add(it) }
+                doThrow(org.bukkit.plugin.IllegalPluginAccessException("disabled"))
+                    .`when`(f.scheduler).runTask(eq(f.plugin), any(Runnable::class.java))
+                f.asyncTasks.removeAt(0).run() // Must not throw on the async thread.
+                assertTrue(results.isEmpty())
             }
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
