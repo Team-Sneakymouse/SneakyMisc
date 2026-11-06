@@ -108,6 +108,19 @@ class DClockModule(private val logger: Logger) : SneakyModule(), Listener {
         Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
             refreshAllDisplays()
         }, 0L, 20L)
+        if (plugin.server.pluginManager.isPluginEnabled("PlaceholderAPI")) DClockPlaceholders(this).register()
+    }
+
+    /** What %dclock_<clock>[_<display>|_value]% shows (DClockPlaceholders), or null if the clock has no value yet. */
+    fun placeholder(clockName: String, what: String?): String? {
+        val clock = clocks[clockName] ?: return null
+        val value = clock.source.currentValue(System.currentTimeMillis()) ?: return null
+        val display = if (what == null) clock.displays.values.firstOrNull() else clock.displays[what]
+        if (display != null) return DClockDisplay.renderValue(display, value).digits
+        return when (value) {
+            is ClockValue.Literal -> value.value
+            is ClockValue.TimeLeft -> maxOf(0L, value.secondsRemaining)
+        }.toString()
     }
 
     fun reload() {
