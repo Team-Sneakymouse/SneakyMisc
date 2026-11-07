@@ -1,240 +1,64 @@
 package com.danidipp.sneakymisc.dclock
 
-import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import java.util.UUID
-import java.util.logging.Logger
 
-enum class OvertimeBehavior {
-    FREEZE,
-    COUNT_UP;
-
-    companion object {
-        fun parse(value: String?): OvertimeBehavior? {
-            return when (value?.lowercase()) {
-                "freeze" -> FREEZE
-                "count-up" -> COUNT_UP
-                else -> null
-            }
-        }
-    }
-
-    fun configValue(): String {
-        return when (this) {
-            FREEZE -> "freeze"
-            COUNT_UP -> "count-up"
-        }
-    }
-}
-
-enum class SourceValueMode {
-    UNIX_SECONDS,
-    LITERAL;
-
-    companion object {
-        fun parse(value: String?): SourceValueMode? {
-            return when (value?.lowercase()) {
-                null, "", "unix-seconds" -> UNIX_SECONDS
-                "literal" -> LITERAL
-                else -> null
-            }
-        }
-    }
-
-    fun configValue(): String {
-        return when (this) {
-            UNIX_SECONDS -> "unix-seconds"
-            LITERAL -> "literal"
-        }
-    }
-}
-
-sealed interface SourceConfig
-
-data class PocketBaseSourceConfig(
-    val recordId: String,
-    val valueMode: SourceValueMode,
-) : SourceConfig
-
-data class MagicSpellsSourceConfig(
-    val variableName: String,
-    val valueMode: SourceValueMode,
-) : SourceConfig
-
-data class DisplayConfig(
-    var overtimeBehavior: OvertimeBehavior,
-    val digits: MutableList<UUID>,
-)
-
-data class ClockConfig(
-    val source: SourceConfig,
-    var overtimeCommand: String?,
-    val displays: MutableMap<String, DisplayConfig>,
-)
-
+/**
+ * dclock.yml: the in-world clock displays, each an ordered list of digit entity UUIDs.
+ *
+ * ```yaml
+ * displays:
+ *   spawn:
+ *     - 0b5c...
+ * ```
+ *
+ * [problems] lists anything that could not be read. Saving such a config would drop those
+ * entries, so the module refuses to edit displays until the file is fixed and reloaded.
+ */
 data class DClockConfig(
-    val clocks: MutableMap<String, ClockConfig>,
+    val displays: Map<String, List<UUID>>,
+    val problems: List<String> = emptyList(),
 ) {
     companion object {
-        fun load(configFile: File, logger: Logger): DClockConfig {
-            if (!configFile.exists()) {
-                return DClockConfig(mutableMapOf())
+        /** Display names are YAML keys and placeholder suffixes, so no dots or spaces. */
+        val DISPLAY_NAME = Regex("[a-z0-9_-]+")
+
+        fun load(configFile: File): DClockConfig {
+            if (!configFile.exists()) return DClockConfig(emptyMap())
+            val yaml = YamlConfiguration()
+            try {
+                yaml.load(configFile)
+            } catch (e: Exception) {
+                return DClockConfig(emptyMap(), listOf("cannot parse ${configFile.name}: ${e.message}"))
             }
 
-            val yaml = YamlConfiguration.loadConfiguration(configFile)
-            val clocksSection = yaml.getConfigurationSection("clocks") ?: return DClockConfig(mutableMapOf())
-            val clocks = linkedMapOf<String, ClockConfig>()
-
-            for (clockName in clocksSection.getKeys(false)) {
-                val clockSection = clocksSection.getConfigurationSection(clockName)
-                if (clockSection == null) {
-                    logger.warning("DClock '$clockName': invalid clock section")
-                    continue
-                }
-
-                val source = loadSourceConfig(clockName, clockSection.getConfigurationSection("source"), logger) ?: continue
-                val displays = loadDisplays(clockName, clockSection.getConfigurationSection("displays"), logger)
-                clocks[clockName] = ClockConfig(
-                    source = source,
-                    overtimeCommand = clockSection.getString("overtimeCommand")?.takeIf { it.isNotBlank() },
-                    displays = displays,
-                )
-            }
-
-            return DClockConfig(clocks.toMutableMap())
-        }
-
-        private fun loadSourceConfig(clockName: String, section: ConfigurationSection?, logger: Logger): SourceConfig? {
-            if (section == null) {
-                logger.warning("DClock '$clockName': missing source section")
-                return null
-            }
-
-            return when (section.getString("type")?.lowercase()) {
-                "pocketbase" -> {
-                    val recordId = section.getString("record")
-                    if (recordId.isNullOrBlank()) {
-                        logger.warning("DClock '$clockName': missing source.record for pocketbase source")
-                        null
-                    } else {
-                        val valueMode = SourceValueMode.parse(section.getString("valueMode"))
-                        if (valueMode == null) {
-                            logger.warning("DClock '$clockName': invalid source.valueMode")
-                            null
-                        } else {
-                            PocketBaseSourceConfig(recordId, valueMode)
-                        }
-                    }
-                }
-
-                "magicspells" -> {
-                    val variable = section.getString("variable")
-                    if (variable.isNullOrBlank()) {
-                        logger.warning("DClock '$clockName': missing source.variable for magicspells source")
-                        null
-                    } else {
-                        val valueMode = SourceValueMode.parse(section.getString("valueMode"))
-                        if (valueMode == null) {
-                            logger.warning("DClock '$clockName': invalid source.valueMode")
-                            null
-                        } else {
-                            MagicSpellsSourceConfig(variable, valueMode)
-                        }
-                    }
-                }
-
-                else -> {
-                    logger.warning("DClock '$clockName': unknown source type '${section.getString("type")}'")
-                    null
-                }
-            }
-        }
-
-        private fun loadDisplays(
-            clockName: String,
-            section: ConfigurationSection?,
-            logger: Logger,
-        ): MutableMap<String, DisplayConfig> {
-            if (section == null) return linkedMapOf<String, DisplayConfig>().toMutableMap()
-
-            val displays = linkedMapOf<String, DisplayConfig>()
-            for (displayName in section.getKeys(false)) {
-                val displaySection = section.getConfigurationSection(displayName)
-                if (displaySection == null) {
-                    logger.warning("DClock '$clockName/$displayName': invalid display section")
-                    continue
-                }
-
-                val overtimeBehavior = OvertimeBehavior.parse(displaySection.getString("overtimeBehavior"))
-                if (overtimeBehavior == null) {
-                    logger.warning("DClock '$clockName/$displayName': missing or invalid overtimeBehavior")
-                    continue
-                }
-
-                if (!displaySection.isList("digits")) {
-                    logger.warning("DClock '$clockName/$displayName': missing digits list")
-                    continue
-                }
-
-                val digits = mutableListOf<UUID>()
-                for (rawUuid in displaySection.getStringList("digits")) {
-                    val uuid = runCatching { UUID.fromString(rawUuid) }.getOrNull()
-                    if (uuid == null) {
-                        logger.warning("DClock '$clockName/$displayName': invalid digit UUID '$rawUuid'")
+            val displays = linkedMapOf<String, List<UUID>>()
+            val problems = mutableListOf<String>()
+            yaml.getConfigurationSection("displays")?.let { section ->
+                for (name in section.getKeys(false)) {
+                    if (!DISPLAY_NAME.matches(name)) {
+                        problems += "display '$name': invalid name (allowed: a-z 0-9 _ -)"
                         continue
                     }
-                    digits += uuid
+                    val raw = section.getStringList(name)
+                    val digits = raw.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                    when {
+                        digits.isEmpty() -> problems += "display '$name': no valid digit UUIDs"
+                        digits.size != raw.size -> problems += "display '$name': invalid digit UUIDs in $raw"
+                        else -> displays[name] = digits
+                    }
                 }
-
-                if (digits.isEmpty()) {
-                    logger.warning("DClock '$clockName/$displayName': digits list contains no valid UUIDs")
-                    continue
-                }
-
-                displays[displayName] = DisplayConfig(
-                    overtimeBehavior = overtimeBehavior,
-                    digits = digits,
-                )
             }
-
-            return displays.toMutableMap()
+            return DClockConfig(displays, problems)
         }
     }
 
     fun save(configFile: File) {
+        check(problems.isEmpty()) { "refusing to save a config that did not load cleanly" }
         val yaml = YamlConfiguration()
-        val clocksSection = yaml.createSection("clocks")
-
-        for ((clockName, clockConfig) in clocks) {
-            val clockSection = clocksSection.createSection(clockName)
-            val sourceSection = clockSection.createSection("source")
-            when (val source = clockConfig.source) {
-                is PocketBaseSourceConfig -> {
-                    sourceSection.set("type", "pocketbase")
-                    sourceSection.set("record", source.recordId)
-                    sourceSection.set("valueMode", source.valueMode.configValue())
-                }
-
-                is MagicSpellsSourceConfig -> {
-                    sourceSection.set("type", "magicspells")
-                    sourceSection.set("variable", source.variableName)
-                    sourceSection.set("valueMode", source.valueMode.configValue())
-                }
-            }
-
-            clockConfig.overtimeCommand?.takeIf { it.isNotBlank() }?.let {
-                clockSection.set("overtimeCommand", it)
-            }
-
-            val displaysSection = clockSection.createSection("displays")
-            for ((displayName, displayConfig) in clockConfig.displays) {
-                val displaySection = displaysSection.createSection(displayName)
-                displaySection.set("overtimeBehavior", displayConfig.overtimeBehavior.configValue())
-                displaySection.set("digits", displayConfig.digits.map(UUID::toString))
-            }
-        }
-
+        val section = yaml.createSection("displays")
+        for ((name, digits) in displays) section.set(name, digits.map(UUID::toString))
         yaml.save(configFile)
     }
 }

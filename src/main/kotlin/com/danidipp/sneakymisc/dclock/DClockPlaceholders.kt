@@ -5,9 +5,9 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion
 import org.bukkit.entity.Player
 
 /**
- * PlaceholderAPI: what a DClock shows. `%dclock_<clock>%` is its first display's digits (as on the wall, zero-padded
- * to its width), `%dclock_<clock>_<display>%` a given display's, `%dclock_<clock>_value%` the bare number. Empty
- * while the clock has no value yet. Used by SneakyHud's dragon bar.
+ * PlaceholderAPI: `%dclock_value%` is the Doom Clock's seconds left as a bare number (used by
+ * SneakyHud's dragon bar); `%dclock_<display>%` is a display's digits as on the wall, zero-padded
+ * to its width. Empty while the value is not known yet.
  */
 class DClockPlaceholders(private val module: DClockModule) : PlaceholderExpansion() {
     override fun getIdentifier() = "dclock"
@@ -16,10 +16,7 @@ class DClockPlaceholders(private val module: DClockModule) : PlaceholderExpansio
     override fun persist() = true
 
     override fun onPlaceholderRequest(player: Player?, params: String): String? {
-        val names = module.getClockNames()
-        // the longest clock name the params start with, so clock names may hold underscores
-        val clock = names.filter { params == it || params.startsWith(it + "_") }.maxByOrNull { it.length } ?: return null
-        val rest = params.removePrefix(clock).removePrefix("_")
-        return module.placeholder(clock, rest.ifEmpty { null }) ?: ""
+        if (params != "value" && params !in module.getDisplayNames()) return null
+        return module.placeholder(params) ?: ""
     }
 }

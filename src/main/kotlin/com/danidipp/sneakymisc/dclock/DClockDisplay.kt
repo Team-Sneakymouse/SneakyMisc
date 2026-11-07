@@ -12,18 +12,12 @@ import org.bukkit.util.Vector
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
 import java.util.UUID
-import kotlin.math.absoluteValue
 import kotlin.math.floor
 
+/** One in-world clock display: a row of ItemDisplay digit entities, left to right. */
 data class DisplayRuntime(
     val name: String,
-    var overtimeBehavior: OvertimeBehavior,
     val entityIds: List<UUID>,
-)
-
-data class RenderedDisplay(
-    val display: DisplayRuntime,
-    val digits: String,
 )
 
 object DClockDisplay {
@@ -35,55 +29,24 @@ object DClockDisplay {
 
     private fun createItem(digit: Char): ItemStack {
         val item = ItemStack(Material.CLAY_BALL)
-        item.itemMeta = item.itemMeta.apply {
-            setCustomModelData(
-                when (digit) {
-                    '0' -> 400
-                    '1' -> 401
-                    '2' -> 402
-                    '3' -> 403
-                    '4' -> 404
-                    '5' -> 405
-                    '6' -> 406
-                    '7' -> 407
-                    '8' -> 408
-                    '9' -> 409
-                    else -> 400
-                }
-            )
-        }
+        item.itemMeta = item.itemMeta.apply { setCustomModelData(400 + (digit - '0')) }
         return item
     }
 
-    val digitItems = ('0'..'9').associateWith(::createItem)
+    val digitItems by lazy { ('0'..'9').associateWith(::createItem) }
 
-    fun renderValue(display: DisplayRuntime, value: ClockValue): RenderedDisplay {
-        val width = display.entityIds.size
-        val adjusted = when (value) {
-            is ClockValue.Literal -> value.value
-            is ClockValue.TimeLeft -> when {
-                value.secondsRemaining >= 0L -> value.secondsRemaining
-                display.overtimeBehavior == OvertimeBehavior.FREEZE -> 0L
-                else -> value.secondsRemaining.absoluteValue
-            }
-        }
-        val digits = normalizeValue(adjusted, width)
-        return RenderedDisplay(display, digits)
-    }
-
-    fun normalizeValue(value: Long, width: Int): String {
-        val raw = value.toString()
-        if (raw.length > width) {
-            return "9".repeat(width)
-        }
+    /** Zero-padded to [width]; all nines when the value does not fit. The clock never goes below 0. */
+    fun digits(value: Long, width: Int): String {
+        val raw = maxOf(0L, value).toString()
+        if (raw.length > width) return "9".repeat(width)
         return raw.padStart(width, '0')
     }
 
-    fun updateDisplay(rendered: RenderedDisplay) {
-        for ((index, uuid) in rendered.display.entityIds.withIndex()) {
+    fun updateDisplay(display: DisplayRuntime, value: Long) {
+        val digits = digits(value, display.entityIds.size)
+        for ((index, uuid) in display.entityIds.withIndex()) {
             val entity = Bukkit.getEntity(uuid) as? ItemDisplay ?: continue
-            val digit = rendered.digits.getOrNull(index) ?: continue
-            entity.setItemStack(digitItems[digit]?.clone())
+            entity.setItemStack(digitItems[digits[index]]?.clone())
         }
     }
 

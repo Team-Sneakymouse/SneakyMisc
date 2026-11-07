@@ -6,18 +6,23 @@ import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.dclock.commands.DClockCommandUtils
 import com.danidipp.sneakymisc.dclock.commands.DClockRootCommand
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
+import com.danidipp.sneakypocketbase.AsyncPocketbaseLifecycleEvent
 import com.danidipp.sneakypocketbase.PocketbaseProvider
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
@@ -48,309 +53,178 @@ object FlooredLongSerializer : KSerializer<Long> {
     }
 }
 
+/** The Doom Clock's `settings` row (key [DClockModule.SETTINGS_KEY]); value is whole seconds left. */
 @Suppress("PROVIDED_RUNTIME_TOO_LOW")
 @Serializable
 data class SettingRecord(
-    @SerialName("id") val recordId: String = "",
     val key: String = "",
     @Serializable(with = FlooredLongSerializer::class)
-    var value: Long = 0L,
-)
+    val value: Long = 0L,
+) {
+    companion object {
+        private val json = Json { ignoreUnknownKeys = true }
 
-data class ClockRuntime(
-    val name: String,
-    val source: ClockSource,
-    val overtimeCommand: String?,
-    val displays: MutableMap<String, DisplayRuntime>,
-    var previousSecondsRemaining: Long? = null,
-)
+        /**
+         * Seconds left from a `settings` record, or null if the record is another setting or has
+         * no value. Other settings rows hold arbitrary JSON, so the key is checked before decoding.
+         * Throws on a dclock row whose value is not a number.
+         */
+        fun dclockValue(recordJson: String): Long? {
+            val record = json.parseToJsonElement(recordJson).jsonObject
+            if (record["key"]?.jsonPrimitive?.content != DClockModule.SETTINGS_KEY) return null
+            if (record["value"] == null || record["value"] == JsonNull) return null
+            return json.decodeFromJsonElement(serializer(), JsonObject(record)).value
+        }
+    }
+}
 
 data class DeleteResult(
     val removed: Int,
     val orphaned: Int,
 )
 
+/**
+ * The Doom Clock. PocketBase owns the value and counts it down (see the pocketbase repo's
+ * dclock hooks); this module only shows it on in-world displays and placeholders, and forwards
+ * `/dclock add|set` as rows in `dclock_adjustments`. While PocketBase is unreachable the last
+ * value stays on display; it is fetched again once the settings subscription is ready.
+ */
 class DClockModule(private val logger: Logger) : SneakyModule(), Listener {
-    companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells") }
-    sealed interface SetOvertimeBehaviorResult {
-        data object NotFound : SetOvertimeBehaviorResult
-        data object Ambiguous : SetOvertimeBehaviorResult
-        data object Updated : SetOvertimeBehaviorResult
-    }
-
-    sealed interface SetClockOvertimeCommandResult {
-        data object NotFound : SetClockOvertimeCommandResult
-        data class Updated(val previousCommand: String?) : SetClockOvertimeCommandResult
+    companion object {
+        val deps = listOf<String>("SneakyPocketbase")
+        const val SETTINGS_KEY = "dclock"
+        const val ADJUSTMENTS_COLLECTION = "dclock_adjustments"
     }
 
     override val commands: List<SneakyMiscCommand> = listOf(SneakyMiscCommand(DClockRootCommand(this).build(
-        DClockCommandUtils(this)).build(),"Manage DClock countdown displays"))
+        DClockCommandUtils(this)).build(),"Manage the Doom Clock and its displays"))
     override val listeners: List<Listener> = listOf(this)
 
     private val plugin = SneakyMisc.getInstance()
     private val configFile = File(plugin.dataFolder, "dclock.yml")
 
+    // Both are replaced as a whole, never mutated, so async readers (PAPI, tab completion) are safe.
     @Volatile
-    private var config = DClockConfig(mutableMapOf())
+    private var config = DClockConfig(emptyMap())
 
     @Volatile
-    private var clocks = linkedMapOf<String, ClockRuntime>()
+    private var displays = emptyList<DisplayRuntime>()
 
+    /** Last known seconds left, or null before the first fetch. */
     @Volatile
-    private var pocketbaseSourcesByRecord = emptyMap<String, List<PocketBaseClockSource>>()
+    var value: Long? = null
+        private set
 
     init {
-        ensureConfigFile()
         loadConfig()
 
-        PocketbaseProvider.getApi().whenReady { subscribeToPocketbase() }
+        PocketbaseProvider.getApi().whenReady {
+            PocketbaseProvider.getApi().subscribe("settings")
+            fetchValue()
+        }
 
-        Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
-            refreshAllDisplays()
-        }, 0L, 20L)
+        Bukkit.getScheduler().runTaskTimer(plugin, Runnable { refreshAllDisplays() }, 0L, 20L)
         if (plugin.server.pluginManager.isPluginEnabled("PlaceholderAPI")) DClockPlaceholders(this).register()
     }
 
-    /** What %dclock_<clock>[_<display>|_value]% shows (DClockPlaceholders), or null if the clock has no value yet. */
-    fun placeholder(clockName: String, what: String?): String? {
-        val clock = clocks[clockName] ?: return null
-        val value = clock.source.currentValue(System.currentTimeMillis()) ?: return null
-        val display = if (what == null) clock.displays.values.firstOrNull() else clock.displays[what]
-        if (display != null) return DClockDisplay.renderValue(display, value).digits
-        return when (value) {
-            is ClockValue.Literal -> value.value
-            is ClockValue.TimeLeft -> maxOf(0L, value.secondsRemaining)
-        }.toString()
+    /** What %dclock_value% or %dclock_<display>% shows, or null when unknown. */
+    fun placeholder(what: String): String? {
+        val current = value ?: return null
+        if (what == "value") return current.toString()
+        val display = displays.firstOrNull { it.name == what } ?: return null
+        return DClockDisplay.digits(current, display.entityIds.size)
     }
 
     fun reload() {
         loadConfig()
-        subscribeToPocketbase()
+        fetchValue()
         refreshAllDisplays()
     }
 
-    fun getClockNames(): List<String> {
-        return config.clocks.keys.sorted()
-    }
+    fun getDisplayNames(): List<String> = displays.map { it.name }.sorted()
 
-    fun getDisplayNames(clockName: String? = null): List<String> {
-        return if (clockName == null) {
-            config.clocks.values.flatMap { it.displays.keys }.distinct().sorted()
-        } else {
-            config.clocks[clockName]?.displays?.keys?.sorted() ?: emptyList()
+    /** Why displays cannot be edited right now, or null if they can. */
+    fun editBlockedReason(): String? =
+        config.problems.takeIf { it.isNotEmpty() }?.let { "dclock.yml did not load cleanly; fix it and /dclock reload: ${it.joinToString("; ")}" }
+
+    /** Adds [seconds] (may be negative or fractional) to the clock. Result is clamped at 0 by PocketBase. */
+    fun add(seconds: Double, source: String) = adjust("add", seconds, source)
+
+    fun set(seconds: Double, source: String) = adjust("set", seconds, source)
+
+    private fun adjust(mode: String, amount: Double, source: String) {
+        val record = buildJsonObject {
+            put("mode", mode)
+            put("amount", amount)
+            put("source", source.take(200))
+        }.toString()
+        PocketbaseProvider.getApi().create(ADJUSTMENTS_COLLECTION, record).exceptionally { failure ->
+            // Unwrap CompletionException. SneakyPocketbase's message says whether the create may have applied.
+            val cause = generateSequence(failure) { it.cause }.first { it !is java.util.concurrent.CompletionException }
+            logger.warning("DClock $mode $amount ($source) failed: ${cause.javaClass.simpleName}: ${cause.message}")
+            null
         }
     }
 
-    fun createClock(clockName: String, source: SourceConfig): Boolean {
-        if (config.clocks.containsKey(clockName)) return false
-
-        config.clocks[clockName] = ClockConfig(source, null, linkedMapOf<String, DisplayConfig>().toMutableMap())
-        saveAndReload()
+    /** Call only after [editBlockedReason] returned null and the name matched [DClockConfig.DISPLAY_NAME]. */
+    fun createDisplay(displayName: String, size: Int, player: Player): Boolean {
+        if (config.displays.containsKey(displayName)) return false
+        val digits = DClockDisplay.spawnDisplayEntities(player, size)
+        saveAndReload(config.copy(displays = config.displays + (displayName to digits)))
         return true
     }
 
-    fun deleteClock(clockName: String): DeleteResult? {
-        val clockConfig = config.clocks.remove(clockName) ?: return null
-        val totals = clockConfig.displays.values.fold(DeleteResult(0, 0)) { acc, display ->
-            val (removed, orphaned) = DClockDisplay.removeLoadedEntities(display.digits)
-            DeleteResult(acc.removed + removed, acc.orphaned + orphaned)
-        }
-        saveAndReload()
-        return totals
-    }
-
-    fun setClockOvertimeCommand(clockName: String, command: String?): SetClockOvertimeCommandResult {
-        val clock = config.clocks[clockName] ?: return SetClockOvertimeCommandResult.NotFound
-        val previousCommand = clock.overtimeCommand
-        clock.overtimeCommand = command
-        saveAndReload()
-        return SetClockOvertimeCommandResult.Updated(previousCommand)
-    }
-
-    fun createDisplay(clockName: String, displayName: String, size: Int, player: Player): Boolean? {
-        val clock = config.clocks[clockName] ?: return null
-        if (clock.displays.containsKey(displayName)) {
-            return false
-        }
-
-        val entityIds = DClockDisplay.spawnDisplayEntities(player, size)
-        clock.displays[displayName] = DisplayConfig(
-            overtimeBehavior = OvertimeBehavior.FREEZE,
-            digits = entityIds.toMutableList(),
-        )
-        saveAndReload()
-        return true
-    }
-
-    fun deleteDisplay(clockName: String, displayName: String): DeleteResult? {
-        val clock = config.clocks[clockName] ?: return null
-        val display = clock.displays.remove(displayName) ?: return null
-        val (removed, orphaned) = DClockDisplay.removeLoadedEntities(display.digits)
-        saveAndReload()
+    /** Call only after [editBlockedReason] returned null. */
+    fun deleteDisplay(displayName: String): DeleteResult? {
+        val digits = config.displays[displayName] ?: return null
+        val (removed, orphaned) = DClockDisplay.removeLoadedEntities(digits)
+        saveAndReload(config.copy(displays = config.displays - displayName))
         return DeleteResult(removed, orphaned)
-    }
-
-    fun setDisplayOvertimeBehavior(displayName: String, behavior: OvertimeBehavior): SetOvertimeBehaviorResult {
-        val matches = config.clocks.filter { (_, clock) -> clock.displays.containsKey(displayName) }
-        if (matches.isEmpty()) return SetOvertimeBehaviorResult.NotFound
-        if (matches.size > 1) return SetOvertimeBehaviorResult.Ambiguous
-
-        val (clockName, clockConfig) = matches.entries.first()
-        clockConfig.displays[displayName]?.overtimeBehavior = behavior
-        saveAndReload()
-        refreshDisplay(clockName, displayName)
-        return SetOvertimeBehaviorResult.Updated
     }
 
     @EventHandler
     fun onPocketBaseUpdate(event: AsyncPocketbaseEvent) {
         if (event.collectionName != "settings") return
-
-        val record = runCatching {
-            Json { ignoreUnknownKeys = true }.decodeFromString<SettingRecord>(event.recordJson)
-        }.getOrElse {
-            logger.warning("Failed to parse DClock settings update: ${it.message}")
+        if (event.action == AsyncPocketbaseEvent.Action.DELETE) return
+        val seconds = runCatching { SettingRecord.dclockValue(event.recordJson) }.getOrElse {
+            logger.warning("Failed to parse DClock value: ${it.message}")
             return
         }
-
-        val sources = pocketbaseSourcesByRecord[record.recordId].orEmpty()
-        if (sources.isEmpty()) return
-        for (source in sources) {
-            source.sourceValue = record.value
-        }
+        if (seconds != null) value = seconds
     }
 
-    private fun ensureConfigFile() {
-        if (configFile.exists()) return
-        configFile.parentFile.mkdirs()
-        configFile.createNewFile()
+    /** Realtime updates are missed while disconnected, so fetch again whenever the subscription becomes ready. */
+    @EventHandler
+    fun onPocketbaseLifecycle(event: AsyncPocketbaseLifecycleEvent) {
+        if (event.current.isCollectionReady("settings") && !event.previous.isCollectionReady("settings")) fetchValue()
     }
 
-    private fun saveAndReload() {
-        config.save(configFile)
+    private fun fetchValue() {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+            runCatching {
+                val records = PocketbaseProvider.getApi().getFullList("settings", 1, "", "key = \"$SETTINGS_KEY\"").join()
+                val record = records.firstOrNull() ?: return@runCatching logger.warning("No '$SETTINGS_KEY' settings record")
+                SettingRecord.dclockValue(record)?.let { value = it }
+            }.onFailure { logger.warning("Failed to fetch DClock value: ${it.message}") }
+        })
+    }
+
+    private fun saveAndReload(updated: DClockConfig) {
+        updated.save(configFile)
         loadConfig()
-        subscribeToPocketbase()
         refreshAllDisplays()
     }
 
     private fun loadConfig() {
-        ensureConfigFile()
-        val loadedConfig = DClockConfig.load(configFile, logger)
-        config = loadedConfig
-
-        val builtClocks = linkedMapOf<String, ClockRuntime>()
-        val sourceIndex = linkedMapOf<String, MutableList<PocketBaseClockSource>>()
-
-        for ((clockName, clockConfig) in loadedConfig.clocks) {
-            val source = when (val sourceConfig = clockConfig.source) {
-                is PocketBaseSourceConfig -> {
-                    val pocketBaseSource = PocketBaseClockSource(sourceConfig.recordId, sourceConfig.valueMode)
-                    sourceIndex.getOrPut(sourceConfig.recordId) { mutableListOf() }.add(pocketBaseSource)
-                    pocketBaseSource
-                }
-
-                is MagicSpellsSourceConfig -> MagicSpellsClockSource(sourceConfig.variableName, sourceConfig.valueMode)
-            }
-
-            val displays = linkedMapOf<String, DisplayRuntime>()
-            for ((displayName, displayConfig) in clockConfig.displays) {
-                displays[displayName] = DisplayRuntime(
-                    name = displayName,
-                    overtimeBehavior = displayConfig.overtimeBehavior,
-                    entityIds = displayConfig.digits.toList(),
-                )
-            }
-
-            builtClocks[clockName] = ClockRuntime(
-                name = clockName,
-                source = source,
-                overtimeCommand = clockConfig.overtimeCommand,
-                displays = displays.toMutableMap(),
-            )
-        }
-
-        clocks = builtClocks
-        pocketbaseSourcesByRecord = sourceIndex.mapValues { it.value.toList() }
-        logger.info("Loaded ${clocks.size} DClock clocks")
-    }
-
-    private fun subscribeToPocketbase() {
-        val pb = PocketbaseProvider.getApi()
-        pb.unsubscribe("settings")
-        pb.subscribe("settings")
-        refreshPocketbaseCaches()
-    }
-
-    private fun refreshPocketbaseCaches() {
-        val sourcesByRecordSnapshot = pocketbaseSourcesByRecord
-        if (sourcesByRecordSnapshot.isEmpty()) return
-
-        for (sources in sourcesByRecordSnapshot.values) {
-            for (source in sources) {
-                source.sourceValue = null
-            }
-        }
-
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
-            val pb = PocketbaseProvider.getApi()
-            for ((recordId, sources) in sourcesByRecordSnapshot) {
-                val record = runCatching {
-                    Json { ignoreUnknownKeys = true }.decodeFromString<SettingRecord>(
-                        pb.getOne("settings", recordId).join()
-                    )
-                }.getOrElse {
-                    logger.warning("Failed to fetch DClock settings record '$recordId': ${it.message}")
-                    null
-                }
-
-                val value = record?.value
-                for (source in sources) {
-                    source.sourceValue = value
-                }
-            }
-        })
+        val loaded = DClockConfig.load(configFile)
+        for (problem in loaded.problems) logger.severe("dclock.yml: $problem (display edits are disabled until fixed)")
+        config = loaded
+        displays = loaded.displays.map { (name, digits) -> DisplayRuntime(name, digits) }
+        logger.info("Loaded ${displays.size} DClock displays")
     }
 
     private fun refreshAllDisplays() {
-        val nowMillis = System.currentTimeMillis()
-        for (clock in clocks.values) {
-            val value = clock.source.currentValue(nowMillis) ?: continue
-            maybeRunOvertimeCommand(clock, value)
-            for (display in clock.displays.values) {
-                DClockDisplay.updateDisplay(DClockDisplay.renderValue(display, value))
-            }
-        }
-    }
-
-    private fun refreshDisplay(clockName: String, displayName: String) {
-        val clock = clocks[clockName] ?: return
-        val display = clock.displays[displayName] ?: return
-        val value = clock.source.currentValue(System.currentTimeMillis()) ?: return
-        DClockDisplay.updateDisplay(DClockDisplay.renderValue(display, value))
-    }
-
-    private fun maybeRunOvertimeCommand(clock: ClockRuntime, value: ClockValue) {
-        val secondsRemaining = (value as? ClockValue.TimeLeft)?.secondsRemaining ?: run {
-            clock.previousSecondsRemaining = null
-            return
-        }
-        val previous = clock.previousSecondsRemaining
-        clock.previousSecondsRemaining = secondsRemaining
-
-        if (previous == null || previous < 0L || secondsRemaining >= 0L) return
-
-        val command = clock.overtimeCommand
-            ?.trim()
-            ?.removePrefix("/")
-            ?.trim()
-            .orEmpty()
-
-        if (command.isBlank()) return
-
-        runCatching {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)
-        }.onFailure {
-            logger.warning("Failed to run DClock overtime command for '${clock.name}': ${it.message}")
-        }
+        val current = value ?: return
+        for (display in displays) DClockDisplay.updateDisplay(display, current)
     }
 }

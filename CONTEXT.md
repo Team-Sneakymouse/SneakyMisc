@@ -59,24 +59,16 @@ A tag identifying a cab's wall design. Elevators and transit cabs with the same 
 ### DClock
 
 **DClock**:
-A Doom Clock mechanic for showing named countdowns or dynamic numeric values in the world. Originally tied to a server-wide storyline, but now treated as an independent reusable mechanic.
-_Avoid_: Digital Clock
-
-**Clock**:
-A named countdown or dynamic numeric value managed by the DClock mechanic.
-_Avoid_: timer
+The Doom Clock: one server-wide count of seconds left, owned and counted down by PocketBase (settings key `dclock`). It stops at 0. SneakyMisc only shows it and forwards adjustments.
+_Avoid_: Digital Clock, timer
 
 **Clock Display**:
-An in-world digit display that renders the current value of exactly one clock; a clock may have multiple clock displays.
+An in-world row of digit entities that shows the DClock's current value, zero-padded to its width.
 _Avoid_: display, digit display
 
-**Clock Source**:
-The upstream value that a clock reads to determine what it should show.
-_Avoid_: source, variable, record
-
-**Overtime**:
-The state of a countdown clock after its target time has passed.
-_Avoid_: expired, elapsed
+**Adjustment**:
+A change to the DClock (`add` or `set` seconds), recorded as a row in PocketBase's `dclock_adjustments`. Gameplay adds time through `/dclock add`.
+_Avoid_: contribution, delta
 
 ### Leaderboards
 
