@@ -12,4 +12,10 @@ class DClockDisplayDigitsTest {
 
     @Test
     fun `never shows below zero`() = assertEquals("000", DClockDisplay.digits(-5, 3))
+
+    @Test
+    fun `digits use the pack's legacy clay_ball definitions`() {
+        assertEquals("lom:legacy/clay_ball/400", DClockDisplay.itemModel('0').toString())
+        assertEquals("lom:legacy/clay_ball/409", DClockDisplay.itemModel('9').toString())
+    }
 }

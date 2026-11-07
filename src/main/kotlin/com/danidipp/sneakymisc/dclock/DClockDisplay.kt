@@ -4,6 +4,7 @@ import com.sneakyutils.util.Direction
 import com.sneakyutils.util.PoseFacing
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -27,9 +28,16 @@ object DClockDisplay {
         val yaw: Float,
     )
 
+    /**
+     * The pack's own item definition for each digit (craftengine-resources: lom/items/legacy/clay_ball/400..409).
+     * Using it directly instead of clay_ball + custom_model_data keeps the digits visible when any other
+     * clay_ball route breaks the shared clay_ball definition on the client.
+     */
+    fun itemModel(digit: Char): NamespacedKey = NamespacedKey("lom", "legacy/clay_ball/${400 + (digit - '0')}")
+
     private fun createItem(digit: Char): ItemStack {
         val item = ItemStack(Material.CLAY_BALL)
-        item.itemMeta = item.itemMeta.apply { setCustomModelData(400 + (digit - '0')) }
+        item.itemMeta = item.itemMeta.apply { setItemModel(itemModel(digit)) }
         return item
     }
 
