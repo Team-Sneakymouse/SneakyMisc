@@ -227,11 +227,11 @@ class CrateDefinitionTest {
     }
 
     @Test
-    fun `disabled MagicSpells has its own failure reason`() {
+    fun `disabled SneakyItems has its own failure reason`() {
         val plugins = mock(PluginManager::class.java)
         mockStatic(Bukkit::class.java).use { bukkit ->
             bukkit.`when`<PluginManager> { Bukkit.getPluginManager() }.thenReturn(plugins)
-            assertEquals("MagicSpells is not enabled.",
+            assertEquals("SneakyItems is not enabled.",
                 assertIs<CrateResolution.Failure>(CrateDefinitions.resolve(crate)).reason)
         }
     }

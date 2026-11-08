@@ -1,6 +1,6 @@
 package com.danidipp.sneakymisc.crates
 
-import com.nisovin.magicspells.util.magicitems.MagicItems
+import com.sneakyitems.util.magicitems.MagicItems
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
@@ -55,7 +55,7 @@ object CrateDefinitions {
         return data.get(key, PersistentDataType.STRING)
     }
 
-    // Resolve from the current registry each time so MagicSpells reloads take effect.
+    // Resolve from the current registry each time so SneakyItems reloads take effect.
     fun resolve(item: ItemStack?, lookup: ((String) -> ItemStack?)? = null): CrateResolution {
         if (item == null || item.type == Material.AIR) return CrateResolution.Failure("No crate item was provided.")
         if (item.type != Material.SHULKER_BOX) {
@@ -68,8 +68,8 @@ object CrateDefinitions {
         val contentId = stringData(item, contentItemKey)?.takeIf { it.isNotBlank() }
             ?: return CrateResolution.Failure("Missing, blank, or non-string PDC '$contentItemKey'.")
         val findItem = lookup ?: run {
-            if (!Bukkit.getPluginManager().isPluginEnabled("MagicSpells")) {
-                return CrateResolution.Failure("MagicSpells is not enabled.")
+            if (!Bukkit.getPluginManager().isPluginEnabled("SneakyItems")) {
+                return CrateResolution.Failure("SneakyItems is not enabled.")
             }
             MagicItems::getItemByInternalName
         }

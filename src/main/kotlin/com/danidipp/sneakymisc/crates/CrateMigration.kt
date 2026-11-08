@@ -1,6 +1,6 @@
 package com.danidipp.sneakymisc.crates
 
-import com.nisovin.magicspells.util.magicitems.MagicItems
+import com.sneakyitems.util.magicitems.MagicItems
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -30,7 +30,7 @@ object CrateMigration {
         }
         val id = if (storedId.startsWith("magicitem:", ignoreCase = true)) storedId.substringAfter(':') else storedId
         val findItem = lookup ?: run {
-            if (!Bukkit.getPluginManager().isPluginEnabled("MagicSpells")) return Prepared(item, original)
+            if (!Bukkit.getPluginManager().isPluginEnabled("SneakyItems")) return Prepared(item, original)
             MagicItems::getItemByInternalName
         }
         fun failure(reason: String) = Prepared(item, CrateResolution.Failure("Crate migration failed: $reason"))

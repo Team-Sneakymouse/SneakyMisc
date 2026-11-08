@@ -51,9 +51,10 @@ dependencies {
 		exclude(group = "org.jetbrains.kotlin")
 		isTransitive = false
 	}
-	compileOnly("io.github.team-sneakymouse:magicspells:2026.10.15-f0a44ae377a3") {
+	compileOnly("io.github.team-sneakymouse:magicspells:2026.11.08-eca39854a666") {
 		isTransitive = false
 	}
+	compileOnly("io.github.team-sneakymouse:sneakyitems:2026.11.08-edc6088f8201")
 	compileOnly("io.github.team-sneakymouse:SneakyCellPhones:2026.10.10-0059a180a603") {
 		isTransitive = false
 	}

@@ -3,7 +3,7 @@ package com.danidipp.sneakymisc.magicspells
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.context.CommandContext
 import com.mojang.brigadier.tree.LiteralCommandNode
-import com.nisovin.magicspells.util.magicitems.MagicItems
+import com.sneakyitems.util.magicitems.MagicItems
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import java.nio.file.Files
@@ -28,7 +28,7 @@ class DumpMagicSpellsItemIdsCommand(private val outputPath: Path) {
             return 0
         }
 
-        context.source.sender.sendMessage("Wrote ${itemIds.size} MagicSpells item ids to ${outputPath.name}")
+        context.source.sender.sendMessage("Wrote ${itemIds.size} magic item ids to ${outputPath.name}")
         return Command.SINGLE_SUCCESS
     }
 

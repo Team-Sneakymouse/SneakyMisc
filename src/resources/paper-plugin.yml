@@ -30,6 +30,10 @@ dependencies:
     MagicSpells:
       load: BEFORE
       required: false
+    SneakyItems:
+      load: BEFORE
+      required: false
+      join-classpath: true
     CMI:
       load: BEFORE
       required: false
