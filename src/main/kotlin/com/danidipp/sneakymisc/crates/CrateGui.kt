@@ -30,6 +30,11 @@ object CrateGui {
         markDecoration(CrateUtils.makeItem(Material.RABBIT_FOOT, 7))
     }
 
+    /**
+     * CMI backpack opens stay reflective on purpose: full CMI has no public Maven artifact
+     * (team vendoring lives under MagicSpells `libs/`), so there is nothing to `compileOnly`.
+     * Runtime still joins CMI's classpath when present (paper-plugin.yml).
+     */
     fun registerExternalEvents(plugin: SneakyMisc) {
         val eventClass = runCatching {
             Class.forName("com.Zrips.CMI.events.CMIBackpackOpenEvent").asSubclass(Event::class.java)
