@@ -1,6 +1,7 @@
 package com.danidipp.sneakymisc.phonebook
 
 import com.destroystokyo.paper.profile.ProfileProperty
+import com.sneakyutils.util.DisplayOnlyInventoryHolder
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import net.kyori.adventure.text.Component
@@ -10,7 +11,6 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Player
 import org.bukkit.inventory.Inventory
-import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.SkullMeta
 import org.bukkit.persistence.PersistentDataType
@@ -85,7 +85,7 @@ object SneakyCharacterPhonebookHeadResolver : PhonebookHeadResolver {
     }
 }
 
-class PhonebookBrowsingHolder(state: PhonebookBrowserState) : InventoryHolder {
+class PhonebookBrowsingHolder(state: PhonebookBrowserState) : DisplayOnlyInventoryHolder {
     private lateinit var backingInventory: Inventory
     private var suppressReturnMenuOnClose = false
     var state: PhonebookBrowserState = state

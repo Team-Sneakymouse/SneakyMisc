@@ -71,13 +71,14 @@ dependencies {
 		isTransitive = false
 	}
 	compileOnly("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
-	compileOnly("io.github.team-sneakymouse:sneakyutils:2026.10.18-657d452bd6f4")
+	compileOnly("io.github.team-sneakymouse:sneakyutils:2026.11.10-7e1262ebd376")
 	testImplementation(kotlin("test"))
 	testImplementation("org.mockito:mockito-core:5.23.0")
 	testImplementation("io.papermc.paper:paper-api:26.2.build.117-stable")
 	testImplementation("me.clip:placeholderapi:2.11.6")
 	testImplementation("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
-	testRuntimeOnly("io.github.team-sneakymouse:sneakyutils:2026.10.18-657d452bd6f4") {
+	testCompileOnly("io.github.team-sneakymouse:sneakyutils:2026.11.10-7e1262ebd376")
+	testRuntimeOnly("io.github.team-sneakymouse:sneakyutils:2026.11.10-7e1262ebd376") {
 		isTransitive = false
 	}
 }

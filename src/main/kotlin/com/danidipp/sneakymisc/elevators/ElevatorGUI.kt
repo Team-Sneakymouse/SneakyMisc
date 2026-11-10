@@ -1,5 +1,6 @@
 package com.danidipp.sneakymisc.elevators
 
+import com.sneakyutils.util.DisplayOnlyInventoryHolder
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
@@ -10,10 +11,9 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.inventory.*
 import org.bukkit.inventory.Inventory
-import org.bukkit.inventory.InventoryHolder
 import org.bukkit.inventory.ItemStack
 
-class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor) : InventoryHolder {
+class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor) : DisplayOnlyInventoryHolder {
     private val contents = Bukkit.createInventory(this, 54, Component.text("Elevator ${floor.elevator.name}"))
     private val input = ElevatorFloorInput()
     private var valid = true
