@@ -18,6 +18,7 @@ import com.danidipp.sneakymisc.magicspells.MagicSpellsModule
 import com.danidipp.sneakymisc.nophysics.NoPhysicsModule
 import com.danidipp.sneakymisc.paintings.PaintingsModule
 import com.danidipp.sneakymisc.phonebook.PhonebookModule
+import com.danidipp.sneakymisc.pluginversionhistory.PluginVersionHistoryModule
 import com.danidipp.sneakymisc.clientupdatereminder.ClientUpdateReminderModule
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
@@ -53,6 +54,8 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(DClockModule.deps))           registerModule(DClockModule(logger))
         if (dependenciesAvailable(LeaderboardsModule.deps))     registerModule(LeaderboardsModule(this))
         registerModule(PaintingsModule())
+        // SneakyDB is optional; without it the mechanic logs one line at startup and records nothing.
+        registerModule(PluginVersionHistoryModule(this))
         if (dependenciesAvailable(LomArchiveModule.deps))
             if (Bukkit.getWorld("lom_archive") != null)  registerModule(LomArchiveModule(logger, "lom_archive"))
         if (dependenciesAvailable(PhonebookModule.deps))        registerModule(PhonebookModule(this))

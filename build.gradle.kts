@@ -71,21 +71,29 @@ dependencies {
 		isTransitive = false
 	}
 	compileOnly("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
-	compileOnly("io.github.team-sneakymouse:sneakyutils:2026.11.10-7e1262ebd376")
+	// sneakyutils and sneakyutils-common must share one version: both carry com.sneakyutils.util.ServerUtil.
+	compileOnly("io.github.team-sneakymouse:sneakyutils:2026.11.11-eca9fb017f37")
+	// Bundled so the Velocity entry point has ServerUtil; proxies have no SneakyUtils plugin.
+	implementation("io.github.team-sneakymouse:sneakyutils-common:2026.11.11-eca9fb017f37")
+	// Never bundle: a copy of SneakyDBProvider in this JAR would shadow SneakyDB's own registry.
+	compileOnly("io.github.team-sneakymouse:sneakydb-api:2026.11.11-6a969d531546")
+	compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
 	testImplementation(kotlin("test"))
 	testImplementation("org.mockito:mockito-core:5.23.0")
 	testImplementation("io.papermc.paper:paper-api:26.2.build.117-stable")
 	testImplementation("me.clip:placeholderapi:2.11.6")
 	testImplementation("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
-	testCompileOnly("io.github.team-sneakymouse:sneakyutils:2026.11.10-7e1262ebd376")
-	testRuntimeOnly("io.github.team-sneakymouse:sneakyutils:2026.11.10-7e1262ebd376") {
+	testImplementation("io.github.team-sneakymouse:sneakydb-api:2026.11.11-6a969d531546")
+	testImplementation("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
+	testCompileOnly("io.github.team-sneakymouse:sneakyutils:2026.11.11-eca9fb017f37")
+	testRuntimeOnly("io.github.team-sneakymouse:sneakyutils:2026.11.11-eca9fb017f37") {
 		isTransitive = false
 	}
 }
 
 tasks.processResources {
 	inputs.property("version", project.version.toString())
-	filesMatching("paper-plugin.yml") {
+	filesMatching(listOf("paper-plugin.yml", "velocity-plugin.json")) {
 		expand("version" to project.version.toString())
 	}
 }
@@ -131,8 +139,22 @@ val verifyPrivateKotlinRuntime by tasks.registering {
 	}
 }
 
+// One JAR serves Paper and Velocity: both descriptors and the platform-free ServerUtil must be inside, and
+// SneakyDB's API must not be (a bundled SneakyDBProvider would shadow SneakyDB's own registry).
+val verifyPlatformJar by tasks.registering {
+	dependsOn(tasks.jar)
+	doLast {
+		val jarFile = tasks.jar.get().archiveFile.get().asFile
+		val entries = zipTree(jarFile)
+		listOf("paper-plugin.yml", "velocity-plugin.json", "com/sneakyutils/util/ServerUtil.class").forEach { path ->
+			check(!entries.matching { include(path) }.isEmpty) { "$path must be in ${jarFile.name}" }
+		}
+		check(entries.matching { include("com/sneakydb/**") }.isEmpty) { "SneakyDB classes must not be bundled in ${jarFile.name}" }
+	}
+}
+
 tasks.check {
-	dependsOn(verifyPrivateKotlinRuntime)
+	dependsOn(verifyPrivateKotlinRuntime, verifyPlatformJar)
 }
 
 publishing {
@@ -144,7 +166,7 @@ publishing {
 				name.set("SneakyMisc")
 				description.set("Paper plugin for Lords of Minecraft mechanics that don't justify having a plugin of their own")
 				url.set("https://github.com/Team-Sneakymouse/SneakyMisc")
-				properties.put("sneakyrp.deployment.type", "paper-plugin")
+				properties.put("sneakyrp.deployment.type", "paper-plugin,velocity-plugin")
 				scm {
 					url.set("https://github.com/Team-Sneakymouse/SneakyMisc")
 					connection.set("scm:git:https://github.com/Team-Sneakymouse/SneakyMisc.git")
