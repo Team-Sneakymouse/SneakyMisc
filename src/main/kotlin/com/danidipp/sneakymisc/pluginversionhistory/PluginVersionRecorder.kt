@@ -108,7 +108,10 @@ class PluginVersionRecorder(private val log: SnapshotLog, private val async: Exe
             return current
         }
 
-        fun describe(failure: Throwable): String =
-            failure.message?.takeIf { it.isNotBlank() }?.let { "${failure.javaClass.simpleName}: $it" } ?: failure.javaClass.simpleName
+        /** One line whatever the message holds: PostgreSQL errors carry a `Detail:` part on a line of its own. */
+        fun describe(failure: Throwable): String {
+            val message = failure.message.orEmpty().lineSequence().map(String::trim).filter(String::isNotEmpty).joinToString(" ")
+            return if (message.isEmpty()) failure.javaClass.simpleName else "${failure.javaClass.simpleName}: $message"
+        }
     }
 }

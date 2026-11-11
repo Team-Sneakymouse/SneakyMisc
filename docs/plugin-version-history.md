@@ -63,7 +63,7 @@ Ignite mods come from Ignite's runtime API (`Ignite.mods().containers()`, withou
 
 A snapshot is one multi-row `INSERT`, so it is written completely or not at all; no transactions are needed. The sequence follows SneakyDB's readiness contract: `whenReady()`, then `create table if not exists`, then the insert.
 
-If a snapshot is not recorded, the mechanic logs exactly one line and carries on. There is no retry and no local spool: the server's own log (`latest.log` on Paper, the proxy log on Velocity) lists every plugin and version it loaded and is the backup for a missed snapshot.
+If a snapshot is not recorded, the mechanic logs exactly one line and carries on. A multi-line error message, such as a PostgreSQL error with a `Detail:` part, is joined into that one line. There is no retry and no local spool: the server's own log (`latest.log` on Paper, the proxy log on Velocity) lists every plugin and version it loaded and is the backup for a missed snapshot.
 
 | Situation | Log line |
 | --- | --- |
@@ -97,24 +97,30 @@ s  as (select max(started_at) as t from plugin_version_history
        where server_id = :server_id and started_at <= :from),
 e  as (select max(started_at) as t from plugin_version_history
        where server_id = :server_id and started_at <  :to),
-sp as (select kind, name, version, jar from plugin_version_history, s
+sp as (select kind, name, version, jar, enabled from plugin_version_history, s
        where server_id = :server_id and started_at = s.t and kind in ('plugin', 'mod')),
-ep as (select kind, name, version from plugin_version_history, e
+ep as (select kind, name, version, enabled from plugin_version_history, e
        where server_id = :server_id and started_at = e.t and kind in ('plugin', 'mod')),
 ef as (select name as jar from plugin_version_history, e
        where server_id = :server_id and started_at = e.t and kind = 'failed')
 select kind, name, sp.version as version_at_start, ep.version as version_at_end,
        case when sp.name is null then 'added'
-            when ep.name is not null then 'updated'
-            when sp.jar in (select jar from ef) then 'failed to load'
-            else 'removed' end as change
+            when ep.name is null and sp.jar in (select jar from ef) then 'failed to load'
+            when ep.name is null then 'removed'
+            when ep.enabled is false and sp.enabled is distinct from false then 'disabled'
+            when sp.version is distinct from ep.version then 'updated'
+            else 'enabled' end as change,
+       ep.enabled as enabled_at_end
 from sp full join ep using (kind, name)
-where sp.name is null or ep.name is null or sp.version is distinct from ep.version
+where sp.name is null or ep.name is null
+   or sp.version is distinct from ep.version or sp.enabled is distinct from ep.enabled
 order by kind, name;
 ```
 
 Read `change`, not the version columns, to tell what happened: a version can be null for a plugin or mod that declares none, so a null version does not mean added or removed.
 
+- `disabled` means Paper loaded the plugin at the end but did not enable it, for example because its `onEnable` threw, and it was not already disabled at the start. It wins over `updated`, so compare the version columns to see whether an update came with it. `enabled` is the reverse with an unchanged version.
+- `enabled_at_end` is false for every Paper plugin that is not running at the end, whatever its `change`: an `added` or `updated` row with `enabled_at_end = false` is a plugin that is installed but broken. It is null for mods and on Velocity.
 - `failed to load` means the JAR the plugin ran from at the start is a failed JAR at the end, for example after one of its dependencies was removed. A replacement JAR that fails under a new filename shows as `removed`, so also look at the `failed` rows of the end snapshot.
 - If the server has no snapshot at or before `:from`, everything shows as `added`; report that as "no baseline" instead.
 - If the server has no snapshot before `:to` at all, the result is empty, which is "no data", not "no changes".
@@ -122,7 +128,7 @@ Read `change`, not the version columns, to tell what happened: a version can be 
 **What each server is running now** (its latest snapshot):
 
 ```sql
-select h.server_name, h.kind, h.name, h.version, h.started_at
+select h.server_name, h.kind, h.name, h.version, h.enabled, h.started_at
 from plugin_version_history h
 join (select server_id, max(started_at) as t from plugin_version_history group by server_id) l
   on l.server_id = h.server_id and l.t = h.started_at

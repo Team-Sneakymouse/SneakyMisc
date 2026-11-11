@@ -138,6 +138,18 @@ class PluginVersionRecorderTest {
     }
 
     @Test
+    fun `a multi-line error message is still one log line`() {
+        database.fail["insert"] = RuntimeException("ERROR: duplicate key value\r\n  Detail: Key (server_id)=(dev-main) already exists.\n\n")
+
+        assertFalse(record())
+
+        assertEquals(
+            listOf("ERROR Plugin version snapshot not recorded: the insert failed (RuntimeException: ERROR: duplicate key value Detail: Key (server_id)=(dev-main) already exists.)"),
+            log.lines,
+        )
+    }
+
+    @Test
     fun `a database that throws instead of failing its future is handled the same way`() {
         database.throwOnExecute = IllegalStateException("worker rejected")
 

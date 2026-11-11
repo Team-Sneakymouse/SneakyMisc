@@ -175,3 +175,8 @@ Decisions from review:
 ### 2026-11-11, dependencies released
 
 `sneakyutils-common` (SneakyUtils #17) and SneakyDB's Velocity entry point (SneakyDB #7) are merged and published. The build now pins `sneakyutils` and `sneakyutils-common` at `2026.11.11-eca9fb017f37` and `sneakydb-api` at `2026.11.11-6a969d531546`, and resolves from the team Maven repository alone.
+
+### 2026-11-11, second review
+
+- An error message with line breaks is now joined into one log line, so "exactly one line" also holds for PostgreSQL errors that carry a `Detail:` part.
+- The window query in `docs/plugin-version-history.md` now reads `enabled`: a Paper plugin that is still loaded but stopped enabling shows as `disabled`, and every row carries `enabled_at_end`.
