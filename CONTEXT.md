@@ -154,6 +154,28 @@ _Avoid_: target flag
 **Fully Contained Chunk**:
 A chunk whose complete 16 by 16 horizontal block footprint lies inside a WorldGuard region. The region's vertical bounds do not affect chunk selection because Minecraft force-loading operates on whole chunks.
 
+### Plugin Version History
+
+**Plugin Version History**:
+The record, kept in the `plugin_version_history` table, of what each Paper server and Velocity proxy actually loaded at each startup. It is the only mechanic that also runs on proxies.
+_Avoid_: deploy log, upload history
+
+**Plugin Version Snapshot**:
+Everything one startup of one server records, written in a single insert: the server identity, startup time, platform version, and one row per loaded plugin, Ignite mod, failed JAR, and unapplied update.
+_Avoid_: startup record, scan
+
+**Server Identity**:
+A server's stable id and display name, from `P_SERVER_NAME` through SneakyUtils' `ServerUtil`. A renamed server is a new server.
+_Avoid_: server key, hostname
+
+**Failed JAR**:
+A JAR directly in a server's plugins directory that did not become a loaded plugin. Matched to loaded plugins by filename only.
+_Avoid_: broken plugin, missing plugin
+
+**Unapplied Update**:
+A file still in Paper's update folder after startup, meaning Paper did not apply it. A staged update becomes an unapplied update only if it survives a restart.
+_Avoid_: pending update
+
 ### Meta Overlay
 
 **Meta Overlay Helper**:

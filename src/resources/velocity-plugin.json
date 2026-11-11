@@ -1,0 +1,12 @@
+{
+  "id": "sneakymisc",
+  "name": "SneakyMisc",
+  "version": "${version}",
+  "description": "Records plugin version history on Lords of Minecraft proxies; the Paper mechanics do not run here",
+  "authors": ["DaniDipp"],
+  "url": "https://github.com/Team-Sneakymouse/SneakyMisc",
+  "main": "com.danidipp.sneakymisc.velocity.SneakyMiscVelocity",
+  "dependencies": [
+    { "id": "sneakydb", "optional": true }
+  ]
+}

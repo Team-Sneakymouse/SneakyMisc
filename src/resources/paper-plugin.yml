@@ -45,3 +45,7 @@ dependencies:
     SneakyCellPhones:
       load: BEFORE
       required: false
+    SneakyDB:
+      load: BEFORE
+      required: false
+      join-classpath: true
