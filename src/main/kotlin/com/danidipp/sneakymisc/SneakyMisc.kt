@@ -2,10 +2,6 @@ package com.danidipp.sneakymisc
 
 import com.danidipp.sneakymisc.closeinventory.CloseInventoryModule
 import com.danidipp.sneakymisc.attributes.AttributesModule
-import com.danidipp.sneakymisc.chat.ChatModule
-import com.danidipp.sneakymisc.chat.ChatFlags
-import com.danidipp.sneakymisc.kobold.KoboldModule
-import com.sk89q.worldguard.protection.flags.StateFlag
 import com.danidipp.sneakymisc.crates.CratesModule
 import com.danidipp.sneakymisc.databasesync.DBSyncModule
 import com.danidipp.sneakymisc.dclock.DClockModule
@@ -26,25 +22,14 @@ import org.bukkit.plugin.java.JavaPlugin
 
 class SneakyMisc : JavaPlugin() {
     private val modules = mutableListOf<SneakyModule>()
-    private var chatFlag: StateFlag? = null
 
     override fun onLoad() {
         instance = this
-        if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null) {
-            chatFlag = runCatching { ChatFlags.registerChatFlag() }
-                .onFailure { logger.severe("Cannot enable chat: ${it.message}") }
-                .getOrNull()
-        }
     }
     override fun onEnable() {
         registerModule(AttributesModule(logger))
         registerModule(CratesModule(this))
         if (dependenciesAvailable(ClientUpdateReminderModule.deps)) registerModule(ClientUpdateReminderModule())
-        if (dependenciesAvailable(ChatModule.deps)) {
-            chatFlag?.let { registerModule(ChatModule(this, it)) }
-        }
-        // Kobold wraps the renderer installed by chat when both mechanics are enabled.
-        if (dependenciesAvailable(KoboldModule.deps)) registerModule(KoboldModule(this))
         if (dependenciesAvailable(ElevatorsModule.deps))        registerModule(ElevatorsModule(logger))
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
         if (dependenciesAvailable(DBSyncModule.deps))           registerModule(DBSyncModule(logger))
