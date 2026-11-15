@@ -50,7 +50,7 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
                 return
             }
 
-            plugin.logger.info("Received Pocketbase update for ${record.leaderboard} (name: ${record.name}, value: ${record.value})")
+            plugin.logger.fine("Received Pocketbase update for ${record.leaderboard} (name: ${record.name}, value: ${record.value})")
             val applied = leaderboard.handleRealtimeUpdate(record, event.action)
             if (!applied) return
             

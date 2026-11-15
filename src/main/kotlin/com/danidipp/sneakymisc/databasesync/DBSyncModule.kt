@@ -22,9 +22,9 @@ class DBSyncModule(val logger: Logger) : SneakyModule() {
             val listeners = mutableListOf<Listener>(object : Listener {
                 @EventHandler
                 fun onPlayerJoin(event: PlayerJoinEvent) {
-                    logger.info("Player ${event.player.name} joined, scheduling account sync")
+                    logger.fine("Player ${event.player.name} joined, scheduling account sync")
                     Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), Runnable {
-                        logger.info("Running account sync for ${event.player.name}")
+                        logger.fine("Running account sync for ${event.player.name}")
                         val pb = PocketbaseProvider.getApi()
                         val player = event.player
                         val uuid = player.uniqueId.toString()
@@ -57,9 +57,9 @@ class DBSyncModule(val logger: Logger) : SneakyModule() {
                 listeners.add(object : Listener {
                     @EventHandler
                     fun onChangeCharacter(event: LoadCharacterEvent) {
-                        logger.info("Character ${event.characterName} loaded, scheduling character sync")
+                        logger.fine("Character ${event.characterName} loaded, scheduling character sync")
                         Bukkit.getScheduler().runTaskAsynchronously(SneakyMisc.getInstance(), Runnable {
-                            logger.info("Running character sync for ${event.characterName}")
+                            logger.fine("Running character sync for ${event.characterName}")
                             val pb = PocketbaseProvider.getApi()
                             val player = event.player
                             val tags = Json.decodeFromString<Map<String, String>>(event.tags)
@@ -87,7 +87,7 @@ class DBSyncModule(val logger: Logger) : SneakyModule() {
                                 return@Runnable
                             }
                             if (record.name != event.characterName || record.tags != tags) {
-                                logger.info("Updating character record for ${event.characterName}")
+                                logger.fine("Updating character record for ${event.characterName}")
                                 record.name = event.characterName
                                 record.tags = tags
                                 pb.update("lom2_characters", event.characterUUID, PocketbaseJson.encodeUpdate(record)).join()
