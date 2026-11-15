@@ -6,6 +6,7 @@ import org.bukkit.Bukkit
 import org.bukkit.DyeColor
 import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.EntityType
@@ -60,11 +61,11 @@ object CrateUtils {
         return itemDisplay
     }
 
-    fun makeItem(material: Material, customModelData: Int): ItemStack {
+    fun makeItem(material: Material, itemModel: NamespacedKey): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta
         meta.setHideTooltip(true)
-        meta.setCustomModelData(customModelData)
+        meta.itemModel = itemModel
         item.itemMeta = meta
         return item
     }

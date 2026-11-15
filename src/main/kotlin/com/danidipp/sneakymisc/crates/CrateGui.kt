@@ -26,8 +26,9 @@ import org.bukkit.plugin.EventExecutor
 object CrateGui {
     val storageSlots = setOf(3, 4, 5, 12, 13, 14, 21, 22, 23)
     private val decorationKey = NamespacedKey("sneakymisc", "crate_decoration")
+    private val invisibleItemModel = NamespacedKey("lom", "invisible")
     val fillerItem: ItemStack by lazy {
-        markDecoration(CrateUtils.makeItem(Material.RABBIT_FOOT, 7))
+        markDecoration(CrateUtils.makeItem(Material.RABBIT_FOOT, invisibleItemModel))
     }
 
     /**
