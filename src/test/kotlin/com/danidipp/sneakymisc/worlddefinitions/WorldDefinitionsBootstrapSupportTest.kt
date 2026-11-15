@@ -226,6 +226,29 @@ class WorldDefinitionsBootstrapSupportTest {
     }
 
     @Test
+    fun `skybox is emitted only when configured and must be a known value`() {
+        fun build(extra: String) = WorldDefinitionsBootstrapSupport.buildEntries(
+            YamlConfiguration.loadConfiguration(
+                """
+                dimension-types:
+                  'test:dim':
+                    build-min-y: 0
+                    build-height: 384
+                    logical-height: 384
+                $extra
+                """.trimIndent().reader()
+            )
+        )
+        fun dimension(entries: Map<String, String>) =
+            JsonParser.parseString(entries.getValue("data/test/dimension_type/dim.json")).asJsonObject
+
+        assertTrue(!dimension(build("")).has("skybox"))
+        assertEquals("none", dimension(build("    skybox: none")).get("skybox").asString)
+        val error = assertFailsWith<IllegalArgumentException> { build("    skybox: nether") }
+        assertTrue(error.message!!.contains("skybox must be overworld, end or none"))
+    }
+
+    @Test
     fun `dimension fallback colors are opt in`() {
         val yaml = YamlConfiguration.loadConfiguration(
             """

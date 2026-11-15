@@ -99,7 +99,7 @@ public final class WorldDefinitionsBootstrapSupport {
         if (root == null) return;
         for (String id : root.getKeys(false)) {
             ConfigurationSection section = entry(root, id);
-            checkKeys(section, "build-min-y", "build-height", "logical-height", "fallback-sky-color", "fallback-fog-color", "ambient-light-color");
+            checkKeys(section, "build-min-y", "build-height", "logical-height", "skybox", "fallback-sky-color", "fallback-fog-color", "ambient-light-color");
             JsonObject json = template("dimension-types/overworld.json").getAsJsonObject();
             int minY = requiredInt(section, "build-min-y");
             int height = requiredInt(section, "build-height");
@@ -111,6 +111,13 @@ public final class WorldDefinitionsBootstrapSupport {
             json.addProperty("min_y", minY);
             json.addProperty("height", height);
             json.addProperty("logical_height", logicalHeight);
+            if (section.contains("skybox")) {
+                String skybox = requiredString(section, "skybox");
+                if (!Set.of("overworld", "end", "none").contains(skybox)) {
+                    throw invalid(section, "skybox must be overworld, end or none");
+                }
+                json.addProperty("skybox", skybox);
+            }
             JsonObject attributes = new JsonObject();
             setColor(section, attributes, "fallback-sky-color", "minecraft:visual/sky_color");
             setColor(section, attributes, "fallback-fog-color", "minecraft:visual/fog_color");
