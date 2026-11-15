@@ -63,7 +63,7 @@ class PhonebookModule(private val plugin: JavaPlugin) : SneakyModule() {
     )
 
     init {
-        plugin.saveResource("messages/phonebook.txt", false)
+        if (!java.io.File(plugin.dataFolder, "messages/phonebook.txt").exists()) plugin.saveResource("messages/phonebook.txt", false)
         PhonebookTranslations.registerDefaults(plugin.dataPath.resolve("messages/phonebook.txt"))
         if (plugin.server.pluginManager.isPluginEnabled("PlaceholderAPI")) {
             PhonebookPlaceholders(storage, directory).register()
