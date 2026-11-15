@@ -99,7 +99,7 @@ public final class WorldDefinitionsBootstrapSupport {
         if (root == null) return;
         for (String id : root.getKeys(false)) {
             ConfigurationSection section = entry(root, id);
-            checkKeys(section, "build-min-y", "build-height", "logical-height", "skybox", "fallback-sky-color", "fallback-fog-color", "ambient-light-color");
+            checkKeys(section, "build-min-y", "build-height", "logical-height", "skybox", "sky-light-level", "fallback-sky-color", "fallback-fog-color", "ambient-light-color");
             JsonObject json = template("dimension-types/overworld.json").getAsJsonObject();
             int minY = requiredInt(section, "build-min-y");
             int height = requiredInt(section, "build-height");
@@ -122,6 +122,13 @@ public final class WorldDefinitionsBootstrapSupport {
             setColor(section, attributes, "fallback-sky-color", "minecraft:visual/sky_color");
             setColor(section, attributes, "fallback-fog-color", "minecraft:visual/fog_color");
             setColor(section, attributes, "ambient-light-color", "minecraft:visual/ambient_light_color");
+            if (section.contains("sky-light-level")) {
+                double level = requiredDouble(section, "sky-light-level");
+                if (level < 0 || level > 15) throw invalid(section, "sky-light-level must be between 0 and 15");
+                // Timelines multiply both values, so these are the levels at full daylight.
+                attributes.addProperty("minecraft:gameplay/sky_light_level", (float) level);
+                attributes.addProperty("minecraft:visual/sky_light_factor", (float) (level / 15));
+            }
             if (!attributes.isEmpty()) json.add("attributes", attributes);
             put(entries, "data/" + idPath(id, "dimension_type") + ".json", json);
         }

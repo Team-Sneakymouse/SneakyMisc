@@ -249,6 +249,28 @@ class WorldDefinitionsBootstrapSupportTest {
     }
 
     @Test
+    fun `sky light level sets gameplay level and matching visual factor`() {
+        fun build(level: String) = WorldDefinitionsBootstrapSupport.buildEntries(
+            YamlConfiguration.loadConfiguration(
+                """
+                dimension-types:
+                  'test:dim':
+                    build-min-y: 0
+                    build-height: 384
+                    logical-height: 384
+                    sky-light-level: $level
+                """.trimIndent().reader()
+            )
+        )
+        val attributes = JsonParser.parseString(build("6").getValue("data/test/dimension_type/dim.json"))
+            .asJsonObject.getAsJsonObject("attributes")
+        assertEquals(6.0f, attributes.get("minecraft:gameplay/sky_light_level").asFloat)
+        assertEquals(0.4f, attributes.get("minecraft:visual/sky_light_factor").asFloat)
+        val error = assertFailsWith<IllegalArgumentException> { build("16") }
+        assertTrue(error.message!!.contains("sky-light-level must be between 0 and 15"))
+    }
+
+    @Test
     fun `dimension fallback colors are opt in`() {
         val yaml = YamlConfiguration.loadConfiguration(
             """
