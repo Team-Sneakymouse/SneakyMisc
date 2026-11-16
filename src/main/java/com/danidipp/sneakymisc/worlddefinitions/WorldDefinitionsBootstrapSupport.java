@@ -99,7 +99,8 @@ public final class WorldDefinitionsBootstrapSupport {
         if (root == null) return;
         for (String id : root.getKeys(false)) {
             ConfigurationSection section = entry(root, id);
-            checkKeys(section, "build-min-y", "build-height", "logical-height", "skybox", "sky-light-level", "fallback-sky-color", "fallback-fog-color", "ambient-light-color");
+            checkKeys(section, "build-min-y", "build-height", "logical-height", "skybox", "sky-light-level", "fallback-sky-color", "fallback-fog-color", "ambient-light-color",
+                "fog-start", "fog-end", "sky-fog-end", "water-fog-end");
             JsonObject json = template("dimension-types/overworld.json").getAsJsonObject();
             int minY = requiredInt(section, "build-min-y");
             int height = requiredInt(section, "build-height");
@@ -122,6 +123,7 @@ public final class WorldDefinitionsBootstrapSupport {
             setColor(section, attributes, "fallback-sky-color", "minecraft:visual/sky_color");
             setColor(section, attributes, "fallback-fog-color", "minecraft:visual/fog_color");
             setColor(section, attributes, "ambient-light-color", "minecraft:visual/ambient_light_color");
+            setFogDistances(section, attributes);
             if (section.contains("sky-light-level")) {
                 double level = requiredDouble(section, "sky-light-level");
                 if (level < 0 || level > 15) throw invalid(section, "sky-light-level must be between 0 and 15");
@@ -138,12 +140,14 @@ public final class WorldDefinitionsBootstrapSupport {
         if (root == null) return;
         for (String id : root.getKeys(false)) {
             ConfigurationSection section = entry(root, id);
-            checkKeys(section, "sky-color", "fog-color", "water-color", "water-fog-color", "temperature", "downfall", "precipitation", "vegetation-features");
+            checkKeys(section, "sky-color", "fog-color", "water-color", "water-fog-color", "temperature", "downfall", "precipitation", "vegetation-features",
+                "fog-start", "fog-end", "sky-fog-end", "water-fog-end");
             JsonObject json = template("biomes/empty.json").getAsJsonObject();
             JsonObject attributes = new JsonObject();
             setColor(section, attributes, "sky-color", "minecraft:visual/sky_color");
             setColor(section, attributes, "fog-color", "minecraft:visual/fog_color");
             setColor(section, attributes, "water-fog-color", "minecraft:visual/water_fog_color");
+            setFogDistances(section, attributes);
             if (!attributes.isEmpty()) json.add("attributes", attributes);
             setColor(section, json.getAsJsonObject("effects"), "water-color", "water_color");
             if (!section.contains("water-color")) throw invalid(section, "water-color is required by Minecraft");
@@ -406,6 +410,23 @@ public final class WorldDefinitionsBootstrapSupport {
     private static boolean requiredBoolean(ConfigurationSection section, String key) {
         if (!section.isBoolean(key)) throw invalid(section, key + " must be boolean");
         return section.getBoolean(key);
+    }
+
+    /** Fog distances are in blocks. Minecraft allows a negative start but rejects negative end distances. */
+    private static void setFogDistances(ConfigurationSection section, JsonObject attributes) {
+        if (section.contains("fog-start")) {
+            attributes.addProperty("minecraft:visual/fog_start_distance", (float) requiredDouble(section, "fog-start"));
+        }
+        setFogEnd(section, attributes, "fog-end", "minecraft:visual/fog_end_distance");
+        setFogEnd(section, attributes, "sky-fog-end", "minecraft:visual/sky_fog_end_distance");
+        setFogEnd(section, attributes, "water-fog-end", "minecraft:visual/water_fog_end_distance");
+    }
+
+    private static void setFogEnd(ConfigurationSection section, JsonObject attributes, String key, String jsonKey) {
+        if (!section.contains(key)) return;
+        double distance = requiredDouble(section, key);
+        if (distance < 0) throw invalid(section, key + " must not be negative");
+        attributes.addProperty(jsonKey, (float) distance);
     }
 
     private static void setColor(ConfigurationSection section, JsonObject target, String key, String jsonKey) {

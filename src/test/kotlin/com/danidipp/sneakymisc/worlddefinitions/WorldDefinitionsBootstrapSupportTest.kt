@@ -271,6 +271,56 @@ class WorldDefinitionsBootstrapSupportTest {
     }
 
     @Test
+    fun `fog distances map to attributes on biomes and dimension types`() {
+        val yaml = YamlConfiguration.loadConfiguration(
+            """
+            dimension-types:
+              'test:dim':
+                build-min-y: 0
+                build-height: 384
+                logical-height: 384
+                fog-end: 128
+            biomes:
+              'test:biome':
+                temperature: 0.5
+                downfall: 0.0
+                precipitation: false
+                water-color: '#3f76e4'
+                fog-start: -4
+                fog-end: 48
+                sky-fog-end: 32.5
+                water-fog-end: 16
+            """.trimIndent().reader()
+        )
+        val entries = WorldDefinitionsBootstrapSupport.buildEntries(yaml)
+        val dimension = JsonParser.parseString(entries.getValue("data/test/dimension_type/dim.json"))
+            .asJsonObject.getAsJsonObject("attributes")
+        assertEquals(128.0f, dimension.get("minecraft:visual/fog_end_distance").asFloat)
+        assertTrue(!dimension.has("minecraft:visual/fog_start_distance"))
+
+        val biome = JsonParser.parseString(entries.getValue("data/test/worldgen/biome/biome.json"))
+            .asJsonObject.getAsJsonObject("attributes")
+        assertEquals(-4.0f, biome.get("minecraft:visual/fog_start_distance").asFloat)
+        assertEquals(48.0f, biome.get("minecraft:visual/fog_end_distance").asFloat)
+        assertEquals(32.5f, biome.get("minecraft:visual/sky_fog_end_distance").asFloat)
+        assertEquals(16.0f, biome.get("minecraft:visual/water_fog_end_distance").asFloat)
+
+        val bad = YamlConfiguration.loadConfiguration(
+            """
+            biomes:
+              'test:biome':
+                temperature: 0.5
+                downfall: 0.0
+                precipitation: false
+                water-color: '#3f76e4'
+                fog-end: -1
+            """.trimIndent().reader()
+        )
+        val error = assertFailsWith<IllegalArgumentException> { WorldDefinitionsBootstrapSupport.buildEntries(bad) }
+        assertTrue(error.message!!.contains("fog-end must not be negative"))
+    }
+
+    @Test
     fun `dimension fallback colors are opt in`() {
         val yaml = YamlConfiguration.loadConfiguration(
             """
