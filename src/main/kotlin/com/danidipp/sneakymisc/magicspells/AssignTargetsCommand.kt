@@ -6,11 +6,12 @@ import com.mojang.brigadier.context.CommandContext
 import com.mojang.brigadier.suggestion.SuggestionProvider
 import com.mojang.brigadier.suggestion.SuggestionsBuilder
 import com.mojang.brigadier.tree.LiteralCommandNode
-import com.nisovin.magicspells.MagicSpells
-import com.nisovin.magicspells.variables.variabletypes.PlayerStringVariable
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldguard.WorldGuard
 import com.sk89q.worldguard.protection.managers.RegionManager
+import com.sneakyvariables.api.Kind
+import com.sneakyvariables.api.Scope
+import com.sneakyvariables.api.SneakyVariables
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import org.bukkit.Bukkit
@@ -43,9 +44,9 @@ class AssignTargetsCommand {
         val player = sender as? Player
             ?: return fail(context, "Only players can run /assigntargets because the region is resolved in your current world.")
 
-        val variable = MagicSpells.getVariableManager().getVariable(VARIABLE_NAME)
-        if (variable !is PlayerStringVariable) {
-            return fail(context, "MagicSpells variable $VARIABLE_NAME is missing or is not a PlayerStringVariable.")
+        val def = SneakyVariables.api().definition(VARIABLE_NAME)
+        if (def == null || def.kind() != Kind.STRING) {
+            return fail(context, "SneakyVariables variable $VARIABLE_NAME is missing or is not a string variable.")
         }
 
         val regionId = StringArgumentType.getString(context, "region")
@@ -62,8 +63,14 @@ class AssignTargetsCommand {
         }
 
         val targetValues = buildTargetValues(onlinePlayers, eligiblePlayers)
+        val vars = SneakyVariables.api()
         for ((targetPlayer, targetValue) in targetValues) {
-            MagicSpells.getVariableManager().set(VARIABLE_NAME, targetPlayer, targetValue)
+            val owner = when (def.scope()) {
+                Scope.PLAYER -> vars.player(targetPlayer)
+                Scope.CHARACTER -> vars.character(targetPlayer) ?: continue
+                Scope.GLOBAL -> vars.global()
+            }
+            owner.setString(VARIABLE_NAME, targetValue)
         }
 
         val assignedCount = if (eligiblePlayers.size >= 2) eligiblePlayers.size else 0

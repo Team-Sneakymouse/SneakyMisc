@@ -6,7 +6,7 @@ import org.bukkit.plugin.java.JavaPlugin
 
 class MagicSpellsModule(plugin: JavaPlugin) : SneakyModule() {
     companion object {
-        val deps = listOf("MagicSpells", "WorldGuard", "SneakyItems")
+        val deps = listOf("MagicSpells", "WorldGuard", "SneakyItems", "SneakyVariables")
     }
 
     override val commands: List<SneakyMiscCommand> = listOf(
@@ -16,7 +16,7 @@ class MagicSpellsModule(plugin: JavaPlugin) : SneakyModule() {
         ),
         SneakyMiscCommand(
             AssignTargetsCommand().build(),
-            "Assign MagicSpells espTarget values within a WorldGuard region",
+            "Assign SneakyVariables espTarget values within a WorldGuard region",
         )
     )
 }

@@ -12,6 +12,10 @@ dependencies:
       load: BEFORE
       required: true
       join-classpath: true
+    SneakyVariables:
+      load: BEFORE
+      required: true
+      join-classpath: true
     ViaVersion:
       load: BEFORE
       required: false

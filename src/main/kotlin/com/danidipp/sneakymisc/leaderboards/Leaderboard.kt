@@ -2,8 +2,7 @@ package com.danidipp.sneakymisc.leaderboards
 
 import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
-import com.nisovin.magicspells.variables.Variable
-import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
+import com.sneakyvariables.api.SneakyVariables
 import org.bukkit.Bukkit
 import java.time.LocalDate
 import java.time.ZoneId
@@ -38,8 +37,8 @@ class Leaderboard(
     val db: LeaderboardDB,
     val name: String,
     val type: LeaderboardType,
-    val valueVariable: Variable,
-    val displayVariables: List<GlobalStringVariable>
+    val valueVariable: String,
+    val displayVariables: List<String>,
 ) {
     val userCache = ConcurrentHashMap<UUID, LeaderboardEntry>()
     val lastSentValues = mutableMapOf<UUID, Int>()
@@ -130,16 +129,17 @@ class Leaderboard(
 
     fun updateDisplays() {
         val sortedEntries = userCache.values.filter { it.value > 0 }.sortedByDescending { it.value }.take(displayVariables.size)
+        val global = SneakyVariables.api().global()
         for (i in displayVariables.indices) {
             val variable = displayVariables[i]
             val entry = sortedEntries.getOrNull(i)
             if (entry == null) {
-                variable.parseAndSet("null", "")
+                global.setString(variable, "")
                 continue
             }
             val formattedValue = String.format("%,d", entry.value.toLong())
             plugin.logger.fine("Updating display variable '$name${i+1}' with value '$formattedValue' for character '${entry.characterName}'")
-            variable.parseAndSet("null", "${entry.characterName} $formattedValue")
+            global.setString(variable, "${entry.characterName} $formattedValue")
         }
     }
 

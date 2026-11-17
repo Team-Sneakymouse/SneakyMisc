@@ -55,6 +55,7 @@ dependencies {
 		isTransitive = false
 	}
 	compileOnly("io.github.team-sneakymouse:sneakyitems:2026.11.08-edc6088f8201")
+	compileOnly("io.github.team-sneakymouse:sneakyvariables:2026.11.17-8fcaabc393e3")
 	compileOnly("io.github.team-sneakymouse:SneakyCellPhones:2026.10.10-0059a180a603") {
 		isTransitive = false
 	}
