@@ -76,14 +76,14 @@ dependencies {
 	// Bundled so the Velocity entry point has ServerUtil; proxies have no SneakyUtils plugin.
 	implementation("io.github.team-sneakymouse:sneakyutils-common:2026.11.11-eca9fb017f37")
 	// Never bundle: a copy of SneakyDBProvider in this JAR would shadow SneakyDB's own registry.
-	compileOnly("io.github.team-sneakymouse:sneakydb-api:2026.11.11-6a969d531546")
+	compileOnly("io.github.team-sneakymouse:sneakydb-api:2026.11.17-452c61d0f480")
 	compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
 	testImplementation(kotlin("test"))
 	testImplementation("org.mockito:mockito-core:5.23.0")
 	testImplementation("io.papermc.paper:paper-api:26.2.build.117-stable")
 	testImplementation("me.clip:placeholderapi:2.11.6")
 	testImplementation("io.github.team-sneakymouse:sneakypocketbase-api:2026.10.09-70effb404392")
-	testImplementation("io.github.team-sneakymouse:sneakydb-api:2026.11.11-6a969d531546")
+	testImplementation("io.github.team-sneakymouse:sneakydb-api:2026.11.17-452c61d0f480")
 	testImplementation("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
 	testCompileOnly("io.github.team-sneakymouse:sneakyutils:2026.11.11-eca9fb017f37")
 	testRuntimeOnly("io.github.team-sneakymouse:sneakyutils:2026.11.11-eca9fb017f37") {
