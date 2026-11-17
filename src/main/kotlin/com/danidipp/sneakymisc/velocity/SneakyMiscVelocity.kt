@@ -30,6 +30,7 @@ class SneakyMiscVelocity @Inject constructor(private val proxy: ProxyServer, pri
     /** Normal order: SneakyDB registers its provider at the earliest order of this same event. */
     @Subscribe
     fun onProxyInitialize(event: ProxyInitializeEvent) {
+        val migrations = if (proxy.pluginManager.isLoaded(SNEAKYDB)) SneakyDBSnapshotDatabase.register() else null
         val startedAt = OffsetDateTime.now(ZoneOffset.UTC)
         val version = proxy.version
         val containers = proxy.pluginManager.plugins
@@ -42,15 +43,20 @@ class SneakyMiscVelocity @Inject constructor(private val proxy: ProxyServer, pri
         val loaders = listOf(javaClass.classLoader, proxy.javaClass.classLoader, Thread.currentThread().contextClassLoader, ClassLoader.getSystemClassLoader())
 
         val recorder = PluginVersionRecorder(slf4jLog(logger), Executor { task -> proxy.scheduler.buildTask(this, task).schedule() })
-        recorder.record(ServerIdentity.of(ServerUtil.getServerId(), ServerUtil.getServerName()), ::sneakyDB) { server ->
-            PluginVersionSnapshot(
-                server, startedAt, "velocity", "${version.name} ${version.version}", null,
-                // No unapplied rows: Velocity has no staged-update folder.
-                plugins +
-                    IgniteMods.rows(loaders, IgniteMods.modsDirectory()) +
-                    SnapshotRows.failedJars(SnapshotFiles.jarFileNames(pluginsDirectory), plugins.map { it.jar }),
-            )
-        }
+        recorder.record(
+            ServerIdentity.of(ServerUtil.getServerId(), ServerUtil.getServerName()),
+            ::sneakyDB,
+            { server ->
+                PluginVersionSnapshot(
+                    server, startedAt, "velocity", "${version.name} ${version.version}", null,
+                    // No unapplied rows: Velocity has no staged-update folder.
+                    plugins +
+                        IgniteMods.rows(loaders, IgniteMods.modsDirectory()) +
+                        SnapshotRows.failedJars(SnapshotFiles.jarFileNames(pluginsDirectory), plugins.map { it.jar }),
+                )
+            },
+            migrations,
+        )
     }
 
     /** Checks the plugin before touching `com.sneakydb` classes, which are not loadable without it. */

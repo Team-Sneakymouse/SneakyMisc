@@ -1,5 +1,6 @@
 package com.danidipp.sneakymisc.pluginversionhistory
 
+import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.test.Test
@@ -11,14 +12,20 @@ class PluginVersionHistorySqlTest {
     private val startedAt = OffsetDateTime.of(2026, 11, 11, 3, 4, 5, 123_456_789, ZoneOffset.UTC)
 
     @Test
-    fun `the schema matches the table shared by Paper and Velocity`() {
-        val normalized = PluginVersionHistorySql.CREATE_TABLE.replace(Regex("\\s+"), " ")
+    fun `the migration script matches the table shared by Paper and Velocity`() {
+        val script = requireNotNull(PluginVersionHistorySqlTest::class.java.getResource("/db/migrations/V001__init.sql")) {
+            "V001__init.sql must be on the test classpath"
+        }.readText(StandardCharsets.UTF_8)
+        val normalized = script.lines()
+            .filter { it.isNotBlank() && !it.trimStart().startsWith("--") }
+            .joinToString(" ") { it.trim() }
+            .replace(Regex("\\s+"), " ")
 
         assertEquals(
-            "create table if not exists plugin_version_history ( server_id text not null, server_name text not null, " +
-                "started_at timestamptz not null, platform text not null, platform_version text not null, " +
-                "minecraft_version text, kind text not null, name text not null, version text, jar text, " +
-                "enabled boolean, primary key (server_id, started_at, kind, name) )",
+            "CREATE TABLE plugin_version_history ( server_id text NOT NULL, server_name text NOT NULL, " +
+                "started_at timestamptz NOT NULL, platform text NOT NULL, platform_version text NOT NULL, " +
+                "minecraft_version text, kind text NOT NULL, name text NOT NULL, version text, jar text, " +
+                "enabled boolean, PRIMARY KEY (server_id, started_at, kind, name) );",
             normalized,
         )
     }

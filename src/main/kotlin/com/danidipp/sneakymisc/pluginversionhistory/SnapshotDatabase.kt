@@ -19,8 +19,21 @@ class SneakyDBSnapshotDatabase private constructor(private val api: SneakyDBApi)
     override fun execute(sql: String, parameters: List<Any?>): CompletableFuture<*> = api.execute(sql, parameters)
 
     companion object {
+        @Volatile
+        private var migrations: CompletableFuture<Int>? = null
+
         /** Throws `IllegalStateException` when SneakyDB is not loaded. */
         @JvmStatic
         fun connect(): SnapshotDatabase = SneakyDBSnapshotDatabase(SneakyDBProvider.getApi())
+
+        /** Call once per enable while SneakyDB is present; returns the same future on later calls. */
+        @JvmStatic
+        fun register(): CompletableFuture<*>? = try {
+            migrations ?: SneakyDBProvider.getApi()
+                .migrate(PluginVersionHistorySql.IDENTIFIER, PluginVersionHistorySql::class.java)
+                .also { migrations = it }
+        } catch (failure: RuntimeException) {
+            CompletableFuture.failedFuture<Int>(failure).also { migrations = it }
+        }
     }
 }

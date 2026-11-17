@@ -13,22 +13,22 @@ The plugin list is read on the startup thread. Directory scans, Ignite mod looku
 
 ## Table
 
-One table, `plugin_version_history`, in the `public` schema. SneakyMisc creates it at startup with `create table if not exists`; whichever platform starts first creates it. Paper servers and proxies write to the same table with the same column meanings.
+One table, `plugin_version_history`, in the `public` schema. SneakyDB applies `db/migrations/V001__init.sql` from the SneakyMisc jar (`migrate` plugin id `sneakymisc`); Paper servers and proxies write to the same table with the same column meanings. See `docs/specs/sneakydb-migrations.md` for adoption on databases that already have the table.
 
 ```sql
-create table if not exists plugin_version_history (
-	server_id text not null,
-	server_name text not null,
-	started_at timestamptz not null,
-	platform text not null,
-	platform_version text not null,
+CREATE TABLE plugin_version_history (
+	server_id text NOT NULL,
+	server_name text NOT NULL,
+	started_at timestamptz NOT NULL,
+	platform text NOT NULL,
+	platform_version text NOT NULL,
 	minecraft_version text,
-	kind text not null,
-	name text not null,
+	kind text NOT NULL,
+	name text NOT NULL,
 	version text,
 	jar text,
 	enabled boolean,
-	primary key (server_id, started_at, kind, name)
+	PRIMARY KEY (server_id, started_at, kind, name)
 );
 ```
 
@@ -61,7 +61,7 @@ Ignite mods come from Ignite's runtime API (`Ignite.mods().containers()`, withou
 
 ## Writing
 
-A snapshot is one multi-row `INSERT`, so it is written completely or not at all; no transactions are needed. The sequence follows SneakyDB's readiness contract: `whenReady()`, then `create table if not exists`, then the insert.
+A snapshot is one multi-row `INSERT`, so it is written completely or not at all; no transactions are needed. The sequence follows SneakyDB's readiness contract: register `migrate` once on enable, then at snapshot time `whenReady()`, wait for migrations, then the insert.
 
 If a snapshot is not recorded, the mechanic logs exactly one line and carries on. A multi-line error message, such as a PostgreSQL error with a `Detail:` part, is joined into that one line. There is no retry and no local spool: the server's own log (`latest.log` on Paper, the proxy log on Velocity) lists every plugin and version it loaded and is the backup for a missed snapshot.
 
@@ -71,7 +71,7 @@ If a snapshot is not recorded, the mechanic logs exactly one line and carries on
 | SneakyDB not installed | info: `…SneakyDB is not installed` |
 | SneakyDB installed but disabled or unreachable | error: `…SneakyDB is unavailable (…)` |
 | SneakyDB not ready (initialization failed) | error: `…SneakyDB is not ready (…)` |
-| Table creation fails | error: `…creating the table failed (…)` |
+| Migrations fail | error: `…migrations failed (…)` |
 | Insert fails | error: `…the insert failed (…)` |
 | Success | info: `Recorded plugin version snapshot for <server_id>: N plugins, N mods, N failed JARs, N unapplied files` |
 
@@ -82,7 +82,7 @@ SneakyDB is optional on both platforms: a joined-classpath, non-required depende
 - Versions are compared as strings only. A rebuilt JAR that keeps its version string does not show as a change.
 - Snapshots are taken at startup only. Plugins loaded, unloaded, or replaced while the server runs are not seen until the next startup.
 - A snapshot that failed to write is gone; check that startup's log instead.
-- While the table does not exist yet, servers that start at the same moment can collide on `create table if not exists`; PostgreSQL then fails all but one, and those lose that one snapshot. Start a single server first when rolling this out, or create the table by hand.
+- Until `V001` is applied, snapshots are not recorded. Coordinate rollout with SneakyDB migration adoption (mark `V001` applied when the table already exists).
 - SneakyMisc only writes. It has no commands, queries, or reports over this data.
 
 ## Reading the data
