@@ -120,16 +120,6 @@ _Avoid_: active character, called character
 A non-vanilla painting made available on the server by an external process, with its own artwork, size, title, and author.
 _Avoid_: painting, painting definition
 
-### Record Sync
-
-**Account Sync**:
-The process of keeping an account record aligned with the account's current data.
-_Avoid_: database sync
-
-**Character Sync**:
-The process of keeping a character record aligned with the character's current data.
-_Avoid_: database sync
-
 ### LoM Archive
 
 **LoM Archive**:

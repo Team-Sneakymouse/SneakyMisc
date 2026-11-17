@@ -3,9 +3,7 @@ package com.danidipp.sneakymisc
 import com.danidipp.sneakymisc.closeinventory.CloseInventoryModule
 import com.danidipp.sneakymisc.attributes.AttributesModule
 import com.danidipp.sneakymisc.crates.CratesModule
-import com.danidipp.sneakymisc.databasesync.DBSyncModule
 import com.danidipp.sneakymisc.dclock.DClockModule
-import com.danidipp.sneakymisc.dvzregistrations.RegistrationModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
 import com.danidipp.sneakymisc.forceloadregion.ForceLoadRegionModule
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
@@ -32,8 +30,6 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(ClientUpdateReminderModule.deps)) registerModule(ClientUpdateReminderModule())
         if (dependenciesAvailable(ElevatorsModule.deps))        registerModule(ElevatorsModule(logger))
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
-        if (dependenciesAvailable(DBSyncModule.deps))           registerModule(DBSyncModule(logger))
-        if (dependenciesAvailable(RegistrationModule.deps))     registerModule(RegistrationModule(logger))
         if (dependenciesAvailable(MagicSpellsModule.deps))       registerModule(MagicSpellsModule(this))
         if (dependenciesAvailable(ForceLoadRegionModule.deps))  registerModule(ForceLoadRegionModule())
         if (dependenciesAvailable(DClockModule.deps))           registerModule(DClockModule(logger))
