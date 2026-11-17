@@ -4,12 +4,12 @@ import com.danidipp.sneakymisc.SneakyMisc
 import com.danidipp.sneakymisc.SneakyMiscCommand
 import com.danidipp.sneakymisc.SneakyModule
 import com.danidipp.sneakymisc.leaderboards.commands.LeaderboardDebugCommand
-import com.nisovin.magicspells.MagicSpells
-import com.nisovin.magicspells.events.MagicSpellsLoadedEvent
-import com.nisovin.magicspells.variables.variabletypes.GlobalStringVariable
+import com.sneakyvariables.api.Kind
+import com.sneakyvariables.api.Scope
+import com.sneakyvariables.api.SneakyVariables
 import net.sneakycharactermanager.paper.handlers.character.Character
 import org.bukkit.Bukkit
-import org.bukkit.event.EventHandler
+import org.bukkit.entity.Player
 import org.bukkit.event.Listener
 import java.io.File
 import java.time.LocalDate
@@ -20,7 +20,7 @@ import com.danidipp.sneakypocketbase.AsyncPocketbaseEvent
 import com.danidipp.sneakypocketbase.PocketbaseProvider
 
 class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
-    companion object { val deps = listOf<String>("SneakyPocketbase", "MagicSpells") }
+    companion object { val deps = listOf("SneakyPocketbase", "SneakyVariables") }
     val leaderboards = mutableMapOf<String, Leaderboard>()
     val HALF_MINUTE = 20L * 30L
     
@@ -30,19 +30,7 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
         SneakyMiscCommand(LeaderboardDebugCommand(plugin, this).build().build(), "Debug command for leaderboard cache")
     )
     override val listeners: List<Listener> = listOf(object: Listener {
-        @EventHandler
-        fun onMSEnable(event: MagicSpellsLoadedEvent) {
-            loadConfig()
-            for (leaderboard in leaderboards.values) {
-                plugin.logger.info("Loading initial data for leaderboard '${leaderboard.name}'")
-                leaderboard.loadInitialData {
-                    plugin.logger.info("Updating displays for leaderboard '${leaderboard.name}' after initial data load")
-                    leaderboard.updateDisplays()
-                }
-            }
-        }
-
-        @EventHandler
+        @org.bukkit.event.EventHandler
         fun onPocketbaseEvent(event: AsyncPocketbaseEvent) {
             val record = db.parseEvent(event) ?: return
             val leaderboard = leaderboards[record.leaderboard] ?: run {
@@ -68,15 +56,23 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
             pb.subscribe(db.LEADERBOARDS_COLLECTION)
         }
 
+        loadConfig()
+        for (leaderboard in leaderboards.values) {
+            plugin.logger.info("Loading initial data for leaderboard '${leaderboard.name}'")
+            leaderboard.loadInitialData {
+                plugin.logger.info("Updating displays for leaderboard '${leaderboard.name}' after initial data load")
+                leaderboard.updateDisplays()
+            }
+        }
+
         Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
             if (leaderboards.isEmpty()) return@Runnable
             
-            val dateVariable = MagicSpells.getVariableManager().getVariable("leaderboardCount")
             for (player in Bukkit.getOnlinePlayers()) {
                 val character = Character.get(player) ?: continue
 
-                // Get player's specific date variable
-                val dateInt = (dateVariable?.getValue(player) ?: 0.0).toInt()
+                // Get player's specific date variable (yyMMdd)
+                val dateInt = number(player, "leaderboardCount").toInt()
                 
                 // Convert yyMMdd to ISO format with time 00:00:00 in UTC-7, or use current server date if invalid
                 val playerDateStr = if (dateInt > 0) {
@@ -97,7 +93,7 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
                 }
 
                 for ((_, leaderboard) in leaderboards) {
-                    val value = leaderboard.valueVariable.getValue(player)
+                    val value = number(player, leaderboard.valueVariable)
                     leaderboard.updateScore(
                         LeaderboardScoreSample(
                             accountId = player.uniqueId,
@@ -115,24 +111,25 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
     private fun loadConfig() {
         val configFile = File(plugin.dataFolder, "leaderboards.yml")
         val leaderboardConfigs = LeaderboardConfig.load(configFile, plugin.logger)
+        val vars = SneakyVariables.api()
 
         for (lbConfig in leaderboardConfigs) {
-            val valueVariable = MagicSpells.getVariableManager().getVariable(lbConfig.valueVariable)
-            if (valueVariable == null) {
-                plugin.logger.warning("Leaderboard '${lbConfig.name}': Variable '${lbConfig.valueVariable}' not found")
+            val valueDef = vars.definition(lbConfig.valueVariable)
+            if (valueDef == null || !valueDef.kind().isNumber) {
+                plugin.logger.warning("Leaderboard '${lbConfig.name}': Variable '${lbConfig.valueVariable}' not found (or not a number)")
                 continue
             }
 
-            val displayVariables = mutableListOf<GlobalStringVariable>()
+            val displayVariables = mutableListOf<String>()
             var hasError = false
             for (displayVarName in lbConfig.displayVariables) {
-                val displayVar = MagicSpells.getVariableManager().getVariable(displayVarName) as? GlobalStringVariable
-                if (displayVar == null) {
-                    plugin.logger.warning("Leaderboard '${lbConfig.name}': Display variable '$displayVarName' not found")
+                val displayDef = vars.definition(displayVarName)
+                if (displayDef == null || displayDef.kind() != Kind.STRING || displayDef.scope() != Scope.GLOBAL) {
+                    plugin.logger.warning("Leaderboard '${lbConfig.name}': Display variable '$displayVarName' not found (need global string)")
                     hasError = true
                     break
                 }
-                displayVariables.add(displayVar)
+                displayVariables.add(displayVarName)
             }
 
             if (hasError) continue
@@ -142,10 +139,21 @@ class LeaderboardsModule(val plugin: SneakyMisc): SneakyModule() {
                 db = db,
                 name = lbConfig.name,
                 type = lbConfig.type,
-                valueVariable = valueVariable,
+                valueVariable = lbConfig.valueVariable,
                 displayVariables = displayVariables
             )
             plugin.logger.info("Leaderboard '${lbConfig.name}' initialized with ${displayVariables.size} display variables")
         }
+    }
+
+    private fun number(player: Player, name: String): Double {
+        val vars = SneakyVariables.api()
+        val def = vars.definition(name) ?: return 0.0
+        val owner = when (def.scope()) {
+            Scope.PLAYER -> vars.player(player)
+            Scope.CHARACTER -> vars.character(player) ?: return 0.0
+            Scope.GLOBAL -> vars.global()
+        }
+        return owner.getNumber(name)
     }
 }
