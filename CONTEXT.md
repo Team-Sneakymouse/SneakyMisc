@@ -56,20 +56,6 @@ A fixed-size physical cab away from playable areas, used exclusively for one ele
 **Elevator Style**:
 A tag identifying a cab's wall design. Elevators and transit cabs with the same elevator style share a compatible pool; all styles use the same cab dimensions.
 
-### DClock
-
-**DClock**:
-The Doom Clock: one server-wide count of seconds left, owned and counted down by PocketBase (settings key `dclock`). It stops at 0. SneakyMisc only shows it and forwards adjustments.
-_Avoid_: Digital Clock, timer
-
-**Clock Display**:
-An in-world row of digit entities that shows the DClock's current value, zero-padded to its width.
-_Avoid_: display, digit display
-
-**Adjustment**:
-A change to the DClock (`add` or `set` seconds), recorded as a row in PocketBase's `dclock_adjustments`. Gameplay adds time through `/dclock add`.
-_Avoid_: contribution, delta
-
 ### Leaderboards
 
 **Leaderboard**:
