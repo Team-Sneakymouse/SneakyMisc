@@ -13,6 +13,7 @@ import com.danidipp.sneakymisc.paintings.PaintingsModule
 import com.danidipp.sneakymisc.phonebook.PhonebookModule
 import com.danidipp.sneakymisc.pluginversionhistory.PluginVersionHistoryModule
 import com.danidipp.sneakymisc.clientupdatereminder.ClientUpdateReminderModule
+import com.danidipp.sneakymisc.ptimereset.PTimeResetModule
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
@@ -27,6 +28,7 @@ class SneakyMisc : JavaPlugin() {
         registerModule(AttributesModule(logger))
         registerModule(CratesModule(this))
         if (dependenciesAvailable(ClientUpdateReminderModule.deps)) registerModule(ClientUpdateReminderModule())
+        if (dependenciesAvailable(PTimeResetModule.deps))       registerModule(PTimeResetModule())
         if (dependenciesAvailable(ElevatorsModule.deps))        registerModule(ElevatorsModule(logger))
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
         if (dependenciesAvailable(MagicSpellsModule.deps))       registerModule(MagicSpellsModule(this))
