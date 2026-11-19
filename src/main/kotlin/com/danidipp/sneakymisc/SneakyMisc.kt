@@ -14,6 +14,7 @@ import com.danidipp.sneakymisc.phonebook.PhonebookModule
 import com.danidipp.sneakymisc.pluginversionhistory.PluginVersionHistoryModule
 import com.danidipp.sneakymisc.clientupdatereminder.ClientUpdateReminderModule
 import com.danidipp.sneakymisc.ptimereset.PTimeResetModule
+import com.danidipp.sneakymisc.deathsound.DeathSoundModule
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
@@ -35,6 +36,7 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(ForceLoadRegionModule.deps))  registerModule(ForceLoadRegionModule())
         if (dependenciesAvailable(LeaderboardsModule.deps))     registerModule(LeaderboardsModule(this))
         registerModule(PaintingsModule())
+        registerModule(DeathSoundModule())
         // SneakyDB is optional; without it the mechanic logs one line at startup and records nothing.
         registerModule(PluginVersionHistoryModule(this))
         if (dependenciesAvailable(LomArchiveModule.deps))
