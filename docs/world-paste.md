@@ -52,8 +52,12 @@ darkvalescar:
     - darkvalescar4.schem
     - darkvalescar5.schem
   after-commands:            # console commands, optional
-    - darkvale crater rebuild
+    - darkvale crater off      # off + on: clears the crater and builds it fresh on the new ground,
+    - darkvale crater on       # and leaves it on even where it was off
 ```
+
+`darkvale crater rebuild` alone does nothing where the crater is turned off. Since SneakyDarkvale's 2026-11-20
+build, `darkvale crater on` alone also rebuilds cleanly; `off` + `on` works with older builds too.
 
 To put a build back exactly where it was copied, use the origin it was copied from (FAWE stores it in the
 schematic as `Metadata.WorldEdit.Origin`). Check the boxes with `/worldpaste info` before running.
