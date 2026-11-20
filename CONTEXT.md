@@ -133,7 +133,7 @@ A chunk whose complete 16 by 16 horizontal block footprint lies inside a WorldGu
 ### World Paste
 
 **World Paste Preset**:
-A named set of schematics pasted together at one origin in one world, replacing every block, entity and player in their boxes, followed by optional console commands. Configured in `world-pastes.yml`.
+A named set of schematics pasted together at one origin in one world, replacing every block, entity and player in their boxes, followed by optional console commands. Hard-coded in the plugin.
 _Avoid_: paste template, schematic group
 
 **Paste Area**:

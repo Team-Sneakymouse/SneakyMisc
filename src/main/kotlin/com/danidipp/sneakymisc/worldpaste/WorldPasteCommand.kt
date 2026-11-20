@@ -1,80 +1,62 @@
 package com.danidipp.sneakymisc.worldpaste
 
 import com.mojang.brigadier.Command
-import com.mojang.brigadier.arguments.StringArgumentType
+import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
-import com.mojang.brigadier.suggestion.SuggestionProvider
 import com.mojang.brigadier.tree.LiteralCommandNode
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import org.bukkit.Bukkit
-import org.bukkit.command.CommandSender
 import org.bukkit.plugin.Plugin
-import java.io.File
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * `/worldpaste list`, `/worldpaste info <preset>`, `/worldpaste run <preset> confirm`.
- * Presets live in `plugins/SneakyMisc/world-pastes.yml`; schematics are read from FAWE's schematic folder.
+ * `/worldpaste list`, `/worldpaste info <preset>`, `/worldpaste run <preset> confirm`, one literal per preset in
+ * [WorldPastePresets.ALL]. Schematics are read from FAWE's schematic folder.
  */
 internal class WorldPasteCommand(private val plugin: Plugin) {
-    private val presetsFile get() = File(plugin.dataFolder, "world-pastes.yml")
     private val running = AtomicBoolean(false)
 
-    // Suggestions can be asked for on the main thread, so read the presets file off it.
-    private val presetSuggestions = SuggestionProvider<CommandSourceStack> { _, builder ->
-        CompletableFuture.supplyAsync {
-            for (name in runCatching { WorldPastePresets.load(presetsFile).presets.keys }.getOrDefault(emptySet())) {
-                if (name.lowercase().startsWith(builder.remainingLowerCase)) builder.suggest(name)
-            }
-            builder.build()
+    fun build(): LiteralCommandNode<CommandSourceStack> {
+        val info = Commands.literal("info")
+        val run = Commands.literal("run")
+        for (preset in WorldPastePresets.ALL) {
+            info.then(Commands.literal(preset.name).executes { info(it, preset) })
+            run.then(
+                Commands.literal(preset.name)
+                    .executes {
+                        it.source.sender.sendMessage(
+                            "This replaces everything in the area, removes its entities and kills players in it. " +
+                                "Add 'confirm' to go ahead; '/worldpaste info ${preset.name}' shows the area first."
+                        )
+                        Command.SINGLE_SUCCESS
+                    }
+                    .then(Commands.literal("confirm").executes { run(it, preset) })
+            )
         }
-    }
-
-    fun build(): LiteralCommandNode<CommandSourceStack> =
-        Commands.literal("worldpaste")
+        return Commands.literal("worldpaste")
             .requires { it.sender.hasPermission(PERMISSION) }
             .then(Commands.literal("list").executes { list(it) })
-            .then(
-                Commands.literal("info").then(
-                    Commands.argument("preset", StringArgumentType.word())
-                        .suggests(presetSuggestions)
-                        .executes { info(it) }
-                )
-            )
-            .then(
-                Commands.literal("run").then(
-                    Commands.argument("preset", StringArgumentType.word())
-                        .suggests(presetSuggestions)
-                        .executes {
-                            it.source.sender.sendMessage(
-                                "This replaces everything in the area, removes its entities and kills players in it. " +
-                                    "Add 'confirm' to go ahead; '/worldpaste info' shows the area first."
-                            )
-                            Command.SINGLE_SUCCESS
-                        }
-                        .then(Commands.literal("confirm").executes { run(it) })
-                )
-            )
+            .then(info)
+            .then(run)
             .build()
+    }
 
     private fun list(context: CommandContext<CommandSourceStack>): Int {
-        val sender = context.source.sender
-        withPresets(sender) { result ->
-            sender.sendMessage(
-                if (result.presets.isEmpty()) "No world paste presets in ${presetsFile.path}."
-                else "World paste presets: ${result.presets.keys.joinToString()}"
-            )
-        }
+        context.source.sender.sendMessage("World paste presets: ${WorldPastePresets.ALL.joinToString { it.name }}")
         return Command.SINGLE_SUCCESS
     }
 
-    private fun info(context: CommandContext<CommandSourceStack>): Int {
+    private fun info(context: CommandContext<CommandSourceStack>, preset: WorldPastePreset): Int {
         val sender = context.source.sender
-        val name = StringArgumentType.getString(context, "preset")
-        withPreset(sender, name) { preset ->
-            val schematics = WorldPasteJob.readSchematics(WorldPasteJob.schematicsFolder(), preset)
+        // Reading the schematics is disk work: off the main thread, then back to report.
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+            val schematics = try {
+                WorldPasteJob.readSchematics(WorldPasteJob.schematicsFolder(), preset)
+            } catch (e: Exception) {
+                sender.sendMessage("Couldn't read ${preset.name}'s schematics: $e")
+                return@Runnable
+            }
             val area = PasteArea(schematics.map { it.box })
             WorldPasteJob.closeAll(schematics, plugin.logger)
             Bukkit.getScheduler().runTask(plugin, Runnable {
@@ -89,55 +71,23 @@ internal class WorldPasteCommand(private val plugin: Plugin) {
                     sender.sendMessage("  Afterwards: ${preset.afterCommands.joinToString { "/$it" }}")
                 }
             })
-        }
+        })
         return Command.SINGLE_SUCCESS
     }
 
-    private fun run(context: CommandContext<CommandSourceStack>): Int {
+    private fun run(context: CommandContext<CommandSourceStack>, preset: WorldPastePreset): Int {
         val sender = context.source.sender
-        val name = StringArgumentType.getString(context, "preset")
         if (!running.compareAndSet(false, true)) {
             sender.sendMessage("A world paste is already running.")
             return 0
         }
-        withPreset(sender, name, onMissing = { running.set(false) }) { preset ->
-            Bukkit.getScheduler().runTask(plugin, Runnable {
-                WorldPasteJob(plugin, sender, preset) { running.set(false) }.start()
-            })
+        try {
+            WorldPasteJob(plugin, sender, preset) { running.set(false) }.start()
+        } catch (e: Exception) {
+            running.set(false)
+            throw e
         }
         return Command.SINGLE_SUCCESS
-    }
-
-    /** Reads the presets file off the main thread, then runs [block] there too. */
-    private fun withPresets(sender: CommandSender, block: (WorldPastePresetsResult) -> Unit) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
-            try {
-                val result = WorldPastePresets.load(presetsFile)
-                result.problems.forEach { sender.sendMessage("world-pastes.yml: $it") }
-                block(result)
-            } catch (e: Exception) {
-                sender.sendMessage("World paste failed: $e")
-            }
-        })
-    }
-
-    private fun withPreset(sender: CommandSender, name: String, onMissing: () -> Unit = {}, block: (WorldPastePreset) -> Unit) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
-            try {
-                val result = WorldPastePresets.load(presetsFile)
-                val preset = result.presets[name]
-                if (preset == null) {
-                    result.problems.forEach { sender.sendMessage("world-pastes.yml: $it") }
-                    sender.sendMessage("No world paste preset '$name' in ${presetsFile.path}.")
-                    onMissing()
-                    return@Runnable
-                }
-                block(preset)
-            } catch (e: Exception) {
-                onMissing()
-                sender.sendMessage("World paste failed: $e")
-            }
-        })
     }
 
     private companion object {

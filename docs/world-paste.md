@@ -9,7 +9,7 @@ Permission: `sneakymisc.command.worldpaste` (operators by default). Every comman
 
 | Command | |
 |--|--|
-| `/worldpaste list` | List the presets in `world-pastes.yml` |
+| `/worldpaste list` | List the presets |
 | `/worldpaste info <preset>` | Read the schematics and show where each lands, how many chunks the area covers and who is in it now. Changes nothing |
 | `/worldpaste run <preset> confirm` | Paste. Without `confirm` it only warns |
 
@@ -22,7 +22,7 @@ Permission: `sneakymisc.command.worldpaste` (operators by default). Every comman
    the boxes. Entities riding a player (cosmetics) are left to that player.
 4. Pastes each schematic's blocks, block entities and air at the preset's origin. The schematics' own entities and
    biomes are left out.
-5. Runs the preset's `after-commands` from the console, then tells LodServerSupport which chunks changed.
+5. Runs the preset's after-commands from the console, then tells LodServerSupport which chunks changed.
 6. Tells LSS again after 30 seconds (in case FAWE was still relighting) and keeps the chunks loaded for 90 seconds
    in all, so LSS serves the new LODs from memory, then lets them unload.
 
@@ -33,34 +33,25 @@ after-commands and still tells LSS about the area. Only one paste runs at a time
 LSS sends its change notices every `dirty_broadcast_interval_ticks` (200 by default). Keep it well under 30 seconds
 (600 ticks) so the notices go out while the chunks are still loaded, and above 0 (0 turns the notices off).
 
-## Configuration
+## Presets
 
-`plugins/SneakyMisc/world-pastes.yml`, read fresh by every command (no reload needed).
+Presets are hard-coded in [`WorldPastePresets.kt`](../src/main/kotlin/com/danidipp/sneakymisc/worldpaste/WorldPastePresets.kt);
+a new paste comes with a new jar. Each names a world, the origin each schematic's own origin goes to, the schematic
+files, and console commands to run afterwards.
 
 Schematic files are read from FAWE's schematic folder: `saving.dir` in WorldEdit's config, by default
-`plugins/FastAsyncWorldEdit/schematics/`, the same folder `//schem load` uses. Paths are relative to it and may
-include subfolders (`darkvale/darkvalescar1.schem`), but can't leave it.
-
-```yaml
-darkvalescar:
-  world: world
-  origin: [4991, 60, 4850]   # where each schematic's own origin goes
-  schematics:
-    - darkvalescar1.schem
-    - darkvalescar2.schem
-    - darkvalescar3.schem
-    - darkvalescar4.schem
-    - darkvalescar5.schem
-  after-commands:            # console commands, optional
-    - darkvale crater off      # off + on: clears the crater and builds it fresh on the new ground,
-    - darkvale crater on       # and leaves it on even where it was off
-```
-
-`darkvale crater rebuild` alone does nothing where the crater is turned off. Since SneakyDarkvale's 2026-11-20
-build, `darkvale crater on` alone also rebuilds cleanly; `off` + `on` works with older builds too.
+`plugins/FastAsyncWorldEdit/schematics/`, the same folder `//schem load` uses (on our servers a shared mount). Paths
+are relative to it and may include subfolders (`darkvale/darkvalescar1.schem`), but can't leave it.
 
 To put a build back exactly where it was copied, use the origin it was copied from (FAWE stores it in the
 schematic as `Metadata.WorldEdit.Origin`). Check the boxes with `/worldpaste info` before running.
+
+| Preset | World | Origin | Schematics | Afterwards |
+|--|--|--|--|--|
+| `darkvalescar` | `world` | 4991 60 4850 | `darkvalescar1.schem` to `darkvalescar5.schem` | `darkvale crater off`, `darkvale crater on` |
+
+`darkvalescar`: the old Darkvale blast crater. `darkvale crater off` + `on` clears SneakyDarkvale's crater displays
+and builds them fresh on the new ground, leaving the crater on (`rebuild` alone does nothing where it is off).
 
 ## LodServerSupport
 
