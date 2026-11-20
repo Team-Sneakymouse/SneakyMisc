@@ -40,7 +40,7 @@ class PluginVersionHistorySqlTest {
         val insert = PluginVersionHistorySql.insert(snapshot)
 
         assertEquals(
-            "insert into plugin_version_history (server_id, server_name, started_at, platform, platform_version, " +
+            "insert into sneakymisc.plugin_version_history (server_id, server_name, started_at, platform, platform_version, " +
                 "minecraft_version, kind, name, version, jar, enabled) values " +
                 "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             insert.sql,

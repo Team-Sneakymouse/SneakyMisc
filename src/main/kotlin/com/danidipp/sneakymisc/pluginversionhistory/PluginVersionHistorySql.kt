@@ -2,7 +2,7 @@ package com.danidipp.sneakymisc.pluginversionhistory
 
 import java.time.temporal.ChronoUnit
 
-/** Write statement for `plugin_version_history`; schema is defined in `db/migrations/`. SneakyMisc only writes. */
+/** Write statement for `sneakymisc.plugin_version_history`; schema is defined in `db/migrations/`. SneakyMisc only writes. */
 object PluginVersionHistorySql {
     const val IDENTIFIER = "sneakymisc"
 
@@ -26,7 +26,7 @@ object PluginVersionHistorySql {
         require(snapshot.rows.isNotEmpty()) { "A snapshot needs at least one row" }
         require(snapshot.rows.size <= MAX_ROWS) { "A snapshot of ${snapshot.rows.size} rows exceeds $MAX_ROWS rows" }
         val placeholder = COLUMNS.joinToString(", ", "(", ")") { "?" }
-        val sql = "insert into plugin_version_history (${COLUMNS.joinToString(", ")}) values " +
+        val sql = "insert into sneakymisc.plugin_version_history (${COLUMNS.joinToString(", ")}) values " +
             snapshot.rows.joinToString(", ") { placeholder }
         val startedAt = snapshot.startedAt.truncatedTo(ChronoUnit.MICROS)
         val parameters = snapshot.rows.flatMap { row ->

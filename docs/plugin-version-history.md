@@ -13,10 +13,10 @@ The plugin list is read on the startup thread. Directory scans, Ignite mod looku
 
 ## Table
 
-One table, `plugin_version_history`, in the `public` schema. SneakyDB applies `db/migrations/V001__init.sql` from the SneakyMisc jar (`migrate` plugin id `sneakymisc`); Paper servers and proxies write to the same table with the same column meanings. See `docs/specs/sneakydb-migrations.md` for adoption on databases that already have the table.
+One table, `plugin_version_history`, in the `sneakymisc` schema. SneakyDB applies the scripts in `db/migrations/` from the SneakyMisc jar (`migrate` plugin id `sneakymisc`): `V001__init.sql` creates the table in SneakyDB's default schema (`public`), where it lived before, and `V002__move_to_sneakymisc_schema.sql` moves it into `sneakymisc`, which the operator creates beforehand; Paper servers and proxies write to the same table with the same column meanings. See `docs/specs/sneakydb-migrations.md` for adoption on databases that already have the table.
 
 ```sql
-CREATE TABLE plugin_version_history (
+CREATE TABLE sneakymisc.plugin_version_history (
 	server_id text NOT NULL,
 	server_name text NOT NULL,
 	started_at timestamptz NOT NULL,
@@ -93,15 +93,15 @@ Not implemented in SneakyMisc. These queries are hints for consumers, such as Mo
 
 ```sql
 with
-s  as (select max(started_at) as t from plugin_version_history
+s  as (select max(started_at) as t from sneakymisc.plugin_version_history
        where server_id = :server_id and started_at <= :from),
-e  as (select max(started_at) as t from plugin_version_history
+e  as (select max(started_at) as t from sneakymisc.plugin_version_history
        where server_id = :server_id and started_at <  :to),
-sp as (select kind, name, version, jar, enabled from plugin_version_history, s
+sp as (select kind, name, version, jar, enabled from sneakymisc.plugin_version_history, s
        where server_id = :server_id and started_at = s.t and kind in ('plugin', 'mod')),
-ep as (select kind, name, version, enabled from plugin_version_history, e
+ep as (select kind, name, version, enabled from sneakymisc.plugin_version_history, e
        where server_id = :server_id and started_at = e.t and kind in ('plugin', 'mod')),
-ef as (select name as jar from plugin_version_history, e
+ef as (select name as jar from sneakymisc.plugin_version_history, e
        where server_id = :server_id and started_at = e.t and kind = 'failed')
 select kind, name, sp.version as version_at_start, ep.version as version_at_end,
        case when sp.name is null then 'added'
@@ -129,8 +129,8 @@ Read `change`, not the version columns, to tell what happened: a version can be 
 
 ```sql
 select h.server_name, h.kind, h.name, h.version, h.enabled, h.started_at
-from plugin_version_history h
-join (select server_id, max(started_at) as t from plugin_version_history group by server_id) l
+from sneakymisc.plugin_version_history h
+join (select server_id, max(started_at) as t from sneakymisc.plugin_version_history group by server_id) l
   on l.server_id = h.server_id and l.t = h.started_at
 where h.kind in ('plugin', 'mod')
 order by h.server_name, h.kind, h.name;
@@ -140,7 +140,7 @@ order by h.server_name, h.kind, h.name;
 
 ```sql
 select server_id, server_name, version, min(started_at) as first_running
-from plugin_version_history
+from sneakymisc.plugin_version_history
 where kind = 'plugin' and lower(name) = 'sneakyexample'
 group by server_id, server_name, version
 order by first_running;
