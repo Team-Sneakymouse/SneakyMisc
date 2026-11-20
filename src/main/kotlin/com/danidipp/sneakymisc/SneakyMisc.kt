@@ -15,6 +15,7 @@ import com.danidipp.sneakymisc.phonebook.PhonebookModule
 import com.danidipp.sneakymisc.pluginversionhistory.PluginVersionHistoryModule
 import com.danidipp.sneakymisc.clientupdatereminder.ClientUpdateReminderModule
 import com.danidipp.sneakymisc.ptimereset.PTimeResetModule
+import com.danidipp.sneakymisc.offhand.OffhandModule
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
@@ -32,6 +33,7 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(PTimeResetModule.deps))       registerModule(PTimeResetModule())
         if (dependenciesAvailable(ElevatorsModule.deps))        registerModule(ElevatorsModule(logger))
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
+        if (dependenciesAvailable(OffhandModule.deps))          registerModule(OffhandModule())
         if (dependenciesAvailable(MagicSpellsModule.deps))       registerModule(MagicSpellsModule(this))
         if (dependenciesAvailable(ForceLoadRegionModule.deps))  registerModule(ForceLoadRegionModule())
         if (dependenciesAvailable(WorldPasteModule.deps))       registerModule(WorldPasteModule(this))
