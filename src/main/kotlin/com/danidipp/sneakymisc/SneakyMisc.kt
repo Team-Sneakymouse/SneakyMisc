@@ -5,6 +5,7 @@ import com.danidipp.sneakymisc.attributes.AttributesModule
 import com.danidipp.sneakymisc.crates.CratesModule
 import com.danidipp.sneakymisc.elevators.ElevatorsModule
 import com.danidipp.sneakymisc.forceloadregion.ForceLoadRegionModule
+import com.danidipp.sneakymisc.worldpaste.WorldPasteModule
 import com.danidipp.sneakymisc.leaderboards.LeaderboardsModule
 import com.danidipp.sneakymisc.lomarchive.LomArchiveModule
 import com.danidipp.sneakymisc.magicspells.MagicSpellsModule
@@ -33,6 +34,7 @@ class SneakyMisc : JavaPlugin() {
         if (dependenciesAvailable(CloseInventoryModule.deps))   registerModule(CloseInventoryModule())
         if (dependenciesAvailable(MagicSpellsModule.deps))       registerModule(MagicSpellsModule(this))
         if (dependenciesAvailable(ForceLoadRegionModule.deps))  registerModule(ForceLoadRegionModule())
+        if (dependenciesAvailable(WorldPasteModule.deps))       registerModule(WorldPasteModule(this))
         if (dependenciesAvailable(LeaderboardsModule.deps))     registerModule(LeaderboardsModule(this))
         registerModule(PaintingsModule())
         // SneakyDB is optional; without it the mechanic logs one line at startup and records nothing.

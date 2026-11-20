@@ -130,6 +130,15 @@ _Avoid_: target flag
 **Fully Contained Chunk**:
 A chunk whose complete 16 by 16 horizontal block footprint lies inside a WorldGuard region. The region's vertical bounds do not affect chunk selection because Minecraft force-loading operates on whole chunks.
 
+### World Paste
+
+**World Paste Preset**:
+A named set of schematics pasted together at one origin in one world, replacing every block, entity and player in their boxes, followed by optional console commands. Configured in `world-pastes.yml`.
+_Avoid_: paste template, schematic group
+
+**Paste Area**:
+The union of the boxes where a world paste preset's schematics land.
+
 ### Plugin Version History
 
 **Plugin Version History**:

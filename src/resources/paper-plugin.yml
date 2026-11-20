@@ -46,6 +46,10 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    FastAsyncWorldEdit:
+      load: BEFORE
+      required: false
+      join-classpath: true
     SneakyCellPhones:
       load: BEFORE
       required: false
