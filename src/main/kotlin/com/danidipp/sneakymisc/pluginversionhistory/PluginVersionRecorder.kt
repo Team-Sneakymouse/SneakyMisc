@@ -13,7 +13,7 @@ interface SnapshotLog {
 }
 
 /**
- * Writes one plugin version snapshot per startup: SneakyDB readiness, then `create table if not exists`, then a
+ * Writes one plugin version snapshot per startup: SneakyDB readiness, then jar migrations (registered on enable), then a
  * single multi-row `INSERT`. Every way of not recording logs exactly one line and records nothing; there is no retry
  * and no spool, because the platform's own startup log already lists what it loaded. Never throws to the caller.
  */
@@ -31,6 +31,7 @@ class PluginVersionRecorder(private val log: SnapshotLog, private val async: Exe
         identity: ServerIdentity?,
         database: () -> SnapshotDatabase?,
         collect: (ServerIdentity) -> PluginVersionSnapshot,
+        migrations: CompletableFuture<*>? = null,
     ): CompletableFuture<Boolean> {
         if (identity == null) {
             log.warning("$NOT_RECORDED: the server identity is missing (P_SERVER_NAME is not set or unusable)")
@@ -51,7 +52,7 @@ class PluginVersionRecorder(private val log: SnapshotLog, private val async: Exe
             CompletableFuture.supplyAsync({ prepare(identity, collect) }, async)
                 .thenCompose { (snapshot, insert) ->
                     step("SneakyDB is not ready") { db.whenReady() }
-                        .thenCompose { step("creating the table failed") { db.execute(PluginVersionHistorySql.CREATE_TABLE, emptyList()) } }
+                        .thenCompose { step("migrations failed") { migrations ?: CompletableFuture.completedFuture(null) } }
                         .thenCompose { step("the insert failed") { db.execute(insert.sql, insert.parameters) } }
                         .thenApply { snapshot }
                 }

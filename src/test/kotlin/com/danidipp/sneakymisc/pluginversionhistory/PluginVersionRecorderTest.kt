@@ -16,12 +16,15 @@ class PluginVersionRecorderTest {
     private val identity = ServerIdentity("dev-main", "Dev Main")
     private var collected = 0
 
+    private val migrations = CompletableFuture.completedFuture(1)
+
     private fun record(
         identity: ServerIdentity? = this.identity,
         database: () -> SnapshotDatabase? = { this.database },
         executor: Executor = Executor(Runnable::run),
         collect: (ServerIdentity) -> PluginVersionSnapshot = ::snapshot,
-    ): Boolean = PluginVersionRecorder(log, executor).record(identity, database, collect).join()
+        migrations: CompletableFuture<*>? = this.migrations,
+    ): Boolean = PluginVersionRecorder(log, executor).record(identity, database, collect, migrations).join()
 
     private fun snapshot(server: ServerIdentity): PluginVersionSnapshot {
         collected++
@@ -37,10 +40,10 @@ class PluginVersionRecorderTest {
     }
 
     @Test
-    fun `records readiness then schema then one insert`() {
+    fun `records readiness then migrations then one insert`() {
         assertTrue(record())
 
-        assertEquals(listOf("whenReady", "execute:create", "execute:insert"), database.calls)
+        assertEquals(listOf("whenReady", "execute:insert"), database.calls)
         assertEquals(44, database.insertParameters!!.size)
         assertEquals(
             listOf("INFO Recorded plugin version snapshot for dev-main: 1 plugins, 1 mods, 1 failed JARs, 1 unapplied files"),
@@ -115,14 +118,14 @@ class PluginVersionRecorderTest {
     }
 
     @Test
-    fun `table creation failure logs one error and skips the insert`() {
-        database.fail["create"] = RuntimeException("permission denied for schema public")
+    fun `migration failure logs one error and skips the insert`() {
+        val failed = CompletableFuture.failedFuture<Int>(RuntimeException("permission denied for schema public"))
 
-        assertFalse(record())
+        assertFalse(record(migrations = failed))
 
-        assertEquals(listOf("whenReady", "execute:create"), database.calls)
+        assertEquals(listOf("whenReady"), database.calls)
         assertEquals(
-            listOf("ERROR Plugin version snapshot not recorded: creating the table failed (RuntimeException: permission denied for schema public)"),
+            listOf("ERROR Plugin version snapshot not recorded: migrations failed (RuntimeException: permission denied for schema public)"),
             log.lines,
         )
     }
@@ -133,7 +136,7 @@ class PluginVersionRecorderTest {
 
         assertFalse(record())
 
-        assertEquals(listOf("whenReady", "execute:create", "execute:insert"), database.calls)
+        assertEquals(listOf("whenReady", "execute:insert"), database.calls)
         assertEquals(listOf("ERROR Plugin version snapshot not recorded: the insert failed (RuntimeException: connection reset)"), log.lines)
     }
 
@@ -155,7 +158,7 @@ class PluginVersionRecorderTest {
 
         assertFalse(record())
 
-        assertEquals(listOf("ERROR Plugin version snapshot not recorded: creating the table failed (IllegalStateException: worker rejected)"), log.lines)
+        assertEquals(listOf("ERROR Plugin version snapshot not recorded: the insert failed (IllegalStateException: worker rejected)"), log.lines)
     }
 
     @Test
@@ -193,11 +196,10 @@ class PluginVersionRecorderTest {
         }
 
         override fun execute(sql: String, parameters: List<Any?>): CompletableFuture<*> {
-            val statement = if (sql.startsWith("create table")) "create" else "insert"
-            calls += "execute:$statement"
+            calls += "execute:insert"
             throwOnExecute?.let { throw it }
-            if (statement == "insert") insertParameters = parameters
-            return fail[statement]?.let { CompletableFuture.failedFuture<Int>(it) } ?: CompletableFuture.completedFuture(1)
+            insertParameters = parameters
+            return fail["insert"]?.let { CompletableFuture.failedFuture<Int>(it) } ?: CompletableFuture.completedFuture(1)
         }
     }
 }

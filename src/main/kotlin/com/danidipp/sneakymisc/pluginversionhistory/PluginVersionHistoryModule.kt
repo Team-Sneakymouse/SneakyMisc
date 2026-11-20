@@ -10,6 +10,7 @@ import org.bukkit.event.server.ServerLoadEvent
 import org.bukkit.plugin.Plugin
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 import java.util.logging.Logger
 
@@ -19,6 +20,7 @@ import java.util.logging.Logger
  * `docs/plugin-version-history.md`.
  */
 class PluginVersionHistoryModule(private val plugin: Plugin) : SneakyModule() {
+    private val migrations = registerMigrations()
     private val recorder = PluginVersionRecorder(
         julLog(plugin.logger),
         Executor { task -> Bukkit.getScheduler().runTaskAsynchronously(plugin, task) },
@@ -43,15 +45,26 @@ class PluginVersionHistoryModule(private val plugin: Plugin) : SneakyModule() {
         val updateDirectory = Bukkit.getUpdateFolderFile().toPath()
         val loaders = listOf(javaClass.classLoader, Bukkit.getServer().javaClass.classLoader, Thread.currentThread().contextClassLoader, ClassLoader.getSystemClassLoader())
 
-        recorder.record(ServerIdentity.of(ServerUtil.getServerId(), ServerUtil.getServerName()), ::sneakyDB) { server ->
-            PluginVersionSnapshot(
-                server, startedAt, "paper", platformVersion, minecraftVersion,
-                plugins +
-                    IgniteMods.rows(loaders, IgniteMods.modsDirectory()) +
-                    SnapshotRows.failedJars(SnapshotFiles.jarFileNames(pluginsDirectory), plugins.map { it.jar }) +
-                    SnapshotRows.unapplied(updateDirectory, pluginsDirectory),
-            )
-        }
+        recorder.record(
+            ServerIdentity.of(ServerUtil.getServerId(), ServerUtil.getServerName()),
+            ::sneakyDB,
+            { server ->
+                PluginVersionSnapshot(
+                    server, startedAt, "paper", platformVersion, minecraftVersion,
+                    plugins +
+                        IgniteMods.rows(loaders, IgniteMods.modsDirectory()) +
+                        SnapshotRows.failedJars(SnapshotFiles.jarFileNames(pluginsDirectory), plugins.map { it.jar }) +
+                        SnapshotRows.unapplied(updateDirectory, pluginsDirectory),
+                )
+            },
+            migrations,
+        )
+    }
+
+    private fun registerMigrations(): CompletableFuture<*>? {
+        val sneakyDB = Bukkit.getPluginManager().getPlugin(SNEAKYDB) ?: return null
+        if (!sneakyDB.isEnabled) return null
+        return SneakyDBSnapshotDatabase.register()
     }
 
     /** Checks the plugin before touching `com.sneakydb` classes, which are not loadable without it. */

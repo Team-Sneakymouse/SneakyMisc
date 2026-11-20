@@ -2,25 +2,9 @@ package com.danidipp.sneakymisc.pluginversionhistory
 
 import java.time.temporal.ChronoUnit
 
-/**
- * Schema and write statement for `plugin_version_history`. Paper servers and Velocity proxies both run this exact
- * schema; later changes must be additive (`add column if not exists`). SneakyMisc only writes; it reads nothing back.
- */
+/** Write statement for `plugin_version_history`; schema is defined in `db/migrations/`. SneakyMisc only writes. */
 object PluginVersionHistorySql {
-    const val CREATE_TABLE = """create table if not exists plugin_version_history (
-    server_id text not null,
-    server_name text not null,
-    started_at timestamptz not null,
-    platform text not null,
-    platform_version text not null,
-    minecraft_version text,
-    kind text not null,
-    name text not null,
-    version text,
-    jar text,
-    enabled boolean,
-    primary key (server_id, started_at, kind, name)
-)"""
+    const val IDENTIFIER = "sneakymisc"
 
     private val COLUMNS = listOf(
         "server_id", "server_name", "started_at", "platform", "platform_version", "minecraft_version",
