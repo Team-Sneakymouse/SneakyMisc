@@ -60,6 +60,8 @@ Place an item frame inside a registered transit cab, look at it within five bloc
 
 Clicking it does nothing during elevator travel. Clicking it from inside an idle transit cab, for example after being summoned or stranded there, starts elevator travel for everyone inside to a random elevator floor of the cab's style that the clicker may select. Restricted floors count only if the clicker has their permission. The trip has the usual music, timing, and arrival, and its trail particles move in a random direction. If no such floor exists, an error sound plays and nothing happens.
 
+When a chunk loads, and once for already-loaded chunks at server start, keypad frames (elevator floor keypads and transit keypads) that show anything other than the `lom:elevator_gui` `panel` model are switched to it. This replaces legacy keypad items such as a jigsaw with integer custom model data. Call-control frames are not touched.
+
 Deleting a transit-cab registration removes its generated doors and clears the doorway; the rest of the built cab remains.
 
 ## Live verification

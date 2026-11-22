@@ -808,6 +808,46 @@ class ElevatorsModuleTest {
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }
 
+    @Test fun `loading migrates legacy keypad items to the panel model and leaves other frames alone`() {
+        val f = Fixture()
+        try {
+            val module = ElevatorsModule(f.logger, f.plugin)
+            fun item(model: NamespacedKey?, strings: List<String>): ItemStack {
+                val meta = mock(ItemMeta::class.java, RETURNS_DEEP_STUBS)
+                `when`(meta.itemModel).thenReturn(model)
+                `when`(meta.customModelDataComponent.strings).thenReturn(strings)
+                return mock(ItemStack::class.java).also {
+                    `when`(it.hasItemMeta()).thenReturn(true)
+                    `when`(it.itemMeta).thenReturn(meta)
+                }
+            }
+            fun frame(item: ItemStack?, mode: String? = null, transit: Boolean = false): ItemFrame {
+                val frame = mock(ItemFrame::class.java)
+                val pdc = mock(PersistentDataContainer::class.java)
+                `when`(frame.persistentDataContainer).thenReturn(pdc)
+                `when`(frame.item).thenReturn(item)
+                `when`(pdc.get(ElevatorsModule.CONTROL_MODE, PersistentDataType.STRING)).thenReturn(mode)
+                `when`(pdc.has(ElevatorsModule.TRANSIT_KEYPAD, PersistentDataType.STRING)).thenReturn(transit)
+                return frame
+            }
+            val panelModel = NamespacedKey("lom", "elevator_gui")
+            val legacy = item(null, emptyList())
+            mockConstruction(ItemStack::class.java) { constructed, _ ->
+                `when`(constructed.itemMeta).thenReturn(mock(ItemMeta::class.java, RETURNS_DEEP_STUBS))
+            }.use {
+                for (changed in listOf(frame(legacy, mode = "select"), frame(legacy, transit = true), frame(null, mode = "select"),
+                    frame(item(panelModel, listOf("gui")), mode = "select"))) {
+                    assertTrue(module.migrateKeypad(changed))
+                    verify(changed).setItem(any(ItemStack::class.java), eq(false))
+                }
+                for (kept in listOf(frame(item(panelModel, listOf("panel")), mode = "select"), frame(legacy, mode = "call"), frame(legacy))) {
+                    assertFalse(module.migrateKeypad(kept))
+                    verify(kept, never()).setItem(any(), anyBoolean())
+                }
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
     @Test fun `outside frames including other floors and worlds become call controls for the named floor`() {
         val f = Fixture()
         try {

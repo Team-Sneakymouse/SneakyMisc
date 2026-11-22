@@ -9,6 +9,7 @@ import org.bukkit.block.data.Levelled
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.InvalidConfigurationException
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.entity.Entity
 import org.bukkit.entity.ItemFrame
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
@@ -17,6 +18,8 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.server.PluginDisableEvent
+import org.bukkit.event.server.ServerLoadEvent
+import org.bukkit.event.world.EntitiesLoadEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.IllegalPluginAccessException
@@ -529,6 +532,32 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         val control = link(frame, floor)
         event.isCancelled = true
         event.player.sendMessage("Linked $control to ${floor.id}")
+    }
+
+    @EventHandler
+    fun onEntitiesLoad(event: EntitiesLoadEvent) {
+        event.entities.forEach { migrateKeypad(it) }
+    }
+
+    /** Frames in chunks that loaded before the listeners were registered, such as spawn chunks, get no load event. */
+    @EventHandler
+    fun onServerLoad(event: ServerLoadEvent) {
+        Bukkit.getWorlds().forEach { world -> world.getEntitiesByClass(ItemFrame::class.java).forEach { migrateKeypad(it) } }
+    }
+
+    /**
+     * Gives a linked keypad frame (elevator floor selector or transit keypad) the current panel model if it shows
+     * anything else, such as a legacy jigsaw with integer custom model data. Call-control frames are left alone.
+     * Returns whether the frame was changed.
+     */
+    internal fun migrateKeypad(entity: Entity): Boolean {
+        val frame = entity as? ItemFrame ?: return false
+        val data = frame.persistentDataContainer
+        val keypad = data.has(TRANSIT_KEYPAD, PersistentDataType.STRING) ||
+            data.get(CONTROL_MODE, PersistentDataType.STRING) == "select"
+        if (!keypad || ElevatorGUI.isModel(frame.item, "panel")) return false
+        frame.setItem(ElevatorGUI.model("panel"), false)
+        return true
     }
 
     @EventHandler(ignoreCancelled = true)

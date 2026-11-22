@@ -102,6 +102,12 @@ class ElevatorGUI(private val module: ElevatorsModule, val floor: ElevatorFloor)
             }
         }
 
+        /** Whether [item] already shows the [name] case of the `lom:elevator_gui` item model. */
+        fun isModel(item: ItemStack?, name: String): Boolean {
+            val meta = item?.takeIf { it.hasItemMeta() }?.itemMeta ?: return false
+            return meta.itemModel == ITEM_MODEL && meta.customModelDataComponent.strings == listOf(name)
+        }
+
         fun listener(module: ElevatorsModule) = object : Listener {
             @EventHandler
             fun onOpen(event: InventoryOpenEvent) {
