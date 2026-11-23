@@ -35,6 +35,10 @@ class ElevatorsModuleTest {
         val logger = Logger.getLogger("elevators-test")
         init {
             `when`(plugin.dataFolder).thenReturn(directory)
+            // No other plugin is enabled, so elevator music is the resource pack sound unless a test replaces rideMusic.
+            val server = mock(Server::class.java)
+            `when`(plugin.server).thenReturn(server)
+            `when`(server.pluginManager).thenReturn(mock(org.bukkit.plugin.PluginManager::class.java))
             `when`(world.name).thenReturn("world")
             `when`(world.key()).thenReturn(net.kyori.adventure.key.Key.key("minecraft:overworld"))
             `when`(world.minHeight).thenReturn(-64)
@@ -620,6 +624,96 @@ class ElevatorsModuleTest {
                 verify(destination).open()
                 verify(restricted, never()).open()
                 assertTrue(module.travel.isIdle())
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `ride music replaces the resource pack sound and stops when elevator travel ends`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                val origin = f.floor(module, "1", .5)
+                val destination = f.floor(module, "2", 20.5, 80.0)
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                val transit = module.getTransitCabs().single()
+                val started = mutableListOf<ElevatorCab>()
+                var stopped = 0
+                module.rideMusic = ElevatorMusic { cab, _ -> started.add(cab); ElevatorTask { stopped++ } }
+                var closed: (() -> Unit)? = null
+                doAnswer { call -> closed = call.getArgument(0); ElevatorTask {} }.`when`(origin).close(callbackMatcher())
+
+                val rider = f.player(origin.location.clone())
+                assertEquals(ElevatorDepartureResult.STARTED, module.travel.start(origin, destination))
+                assertTrue(started.isEmpty()) // Nothing plays while the doors close.
+                closed!!()
+                assertEquals(listOf(transit.cab), started)
+                assertEquals(0, stopped)
+                f.callbacks.last().run()
+                assertEquals(20.5, rider.location.x)
+                assertEquals(1, stopped)
+
+                // Travel from inside the cab plays it too, and disabling the plugin mid-travel stops it.
+                val stranded = f.player(transit.cab.location.clone())
+                module.startRandomTransit(stranded, transit)
+                assertEquals(listOf(transit.cab, transit.cab), started)
+                assertEquals(1, stopped)
+                module.onDisable(org.bukkit.event.server.PluginDisableEvent(f.plugin))
+                assertEquals(2, stopped)
+                for (player in listOf(rider, stranded)) verify(player, never()).playSound(player, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+            }
+        } finally { f.doors.close(); f.directory.deleteRecursively() }
+    }
+
+    @Test fun `ride music that cannot play falls back to the resource pack sound without failing travel`() {
+        val f = Fixture()
+        try {
+            mockStatic(Bukkit::class.java).use { bukkit ->
+                bukkit.`when`<BukkitScheduler> { Bukkit.getScheduler() }.thenReturn(f.scheduler)
+                val module = ElevatorsModule(f.logger, f.plugin)
+                module.createElevator("tower", "stone")
+                f.floor(module, "2", 20.5, 80.0)
+                module.createTransitCab("stone1", "stone", Location(f.world, 100.5, -40.0, .5))
+                val transit = module.getTransitCabs().single()
+                val rider = f.player(transit.cab.location.clone())
+                fun sounds() = mockingDetails(rider).invocations.count { it.method.name == "playSound" && it.arguments[1] == "lom:elevator" }
+                fun ride() {
+                    module.startRandomTransit(rider, transit)
+                    assertTrue(module.travel.uses(transit))
+                }
+                fun arrive() {
+                    f.callbacks.last().run()
+                    assertTrue(module.travel.isIdle())
+                    rider.teleport(transit.cab.location.clone())
+                }
+
+                // An installed SneakyBackingTracks without the API fails to link.
+                module.rideMusic = ElevatorMusic { _, _ -> throw NoClassDefFoundError("com/sneakybackingtracks/api/PlotMusic") }
+                ride()
+                assertEquals(1, sounds())
+                arrive()
+
+                // A missing audio file is only reported after the music started.
+                var failed: (() -> Unit)? = null
+                var stopped = 0
+                module.rideMusic = ElevatorMusic { _, report -> failed = report; ElevatorTask { stopped++ } }
+                ride()
+                assertEquals(1, sounds())
+                failed!!()
+                assertEquals(2, sounds())
+                failed() // A repeated report plays nothing more.
+                assertEquals(2, sounds())
+                arrive()
+                assertEquals(0, stopped) // The failed music was already dropped.
+
+                // A report that arrives after the elevator travel ended plays nothing.
+                ride()
+                arrive()
+                assertEquals(1, stopped)
+                failed()
+                assertEquals(2, sounds())
             }
         } finally { f.doors.close(); f.directory.deleteRecursively() }
     }

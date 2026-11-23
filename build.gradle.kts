@@ -59,6 +59,9 @@ dependencies {
 	compileOnly("io.github.team-sneakymouse:SneakyCellPhones:2026.10.10-0059a180a603") {
 		isTransitive = false
 	}
+	compileOnly("io.github.team-sneakymouse:sneakybackingtracks:2026.11.23-b057ec4c763c") {
+		isTransitive = false
+	}
 	compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.18") {
 		isTransitive = false
 	}

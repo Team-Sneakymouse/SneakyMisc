@@ -29,6 +29,15 @@ import java.io.File
 import java.util.logging.Level
 import java.util.logging.Logger
 
+/** Ride music for the occupants of a transit cab, played some other way than the resource pack sound. */
+internal fun interface ElevatorMusic {
+    /**
+     * Starts the music inside [cab] and returns how to stop it, or null if it cannot be played. [failed] runs if a
+     * started music turns out not to play after all, such as when its audio file is missing.
+     */
+    fun start(cab: ElevatorCab, failed: () -> Unit): ElevatorTask?
+}
+
 class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = SneakyMisc.getInstance()) : SneakyModule(), Listener {
     companion object {
         val deps = emptyList<String>()
@@ -47,6 +56,15 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
     private val chunkUsers = mutableMapOf<Chunk, Int>()
     private val particles = mutableMapOf<ElevatorTransitCab, ElevatorParticles>()
     private val leases = mutableMapOf<ElevatorTransitCab, MutableList<Chunk>>()
+    private val music = mutableMapOf<ElevatorTransitCab, ElevatorTask>()
+    private var musicFailureLogged = false
+    /**
+     * Plays through SneakyBackingTracks when that plugin is enabled. Null means the resource pack sound plays instead.
+     * [ElevatorBackingTracksMusic] is only loaded behind the check, so the module works without the plugin.
+     */
+    internal var rideMusic = ElevatorMusic { cab, failed ->
+        if (plugin.server.pluginManager.isPluginEnabled("SneakyBackingTracks")) ElevatorBackingTracksMusic.start(plugin, cab, failed) else null
+    }
     private var stopped = false
     /** Set when elevators.yml could not be read. Saving is blocked so the file is not overwritten. */
     private var configError: String? = null
@@ -82,6 +100,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         }
         override fun release(origin: ElevatorFloor?, destination: ElevatorFloor, cab: ElevatorTransitCab) {
             particles.remove(cab)?.stop()
+            music.remove(cab)?.cancel()
             setLights(cab.cab, IDLE_LIGHT_LEVEL)
             for (chunk in leases.remove(cab).orEmpty()) {
                 val remaining = (chunkUsers[chunk] ?: 1) - 1
@@ -107,13 +126,13 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         override fun openDoors(floor: ElevatorFloor) = floor.open()
         override fun closeDoors(floor: ElevatorFloor, closed: () -> Unit) = floor.close(closed)
         override fun board(origin: ElevatorFloor, cab: ElevatorTransitCab): Int {
-            val moved = transfer(origin.cab, cab.cab, true)
+            val moved = transfer(origin.cab, cab.cab, !startMusic(cab))
             if (moved > 0) particles[cab]?.start()
             return moved
         }
         override fun boardInPlace(cab: ElevatorTransitCab): Int {
             val occupants = cab.cab.players()
-            occupants.forEach { it.playSound(it, "lom:elevator", SoundCategory.MASTER, 1f, 1f) }
+            if (occupants.isNotEmpty() && !startMusic(cab)) occupants.forEach { playMusic(it) }
             if (occupants.isNotEmpty()) particles[cab]?.start()
             return occupants.size
         }
@@ -285,6 +304,37 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
         configError?.let { throw IllegalArgumentException("elevators.yml failed to load ($it). Fix it and run /elevator reload before making changes.") }
     }
 
+    /** The resource pack sound. It follows the account and plays to its end, whatever happens to the ride. */
+    private fun playMusic(player: Player) = player.playSound(player, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+
+    /**
+     * Starts [rideMusic] in a transit cab for the length of its elevator travel; [ElevatorTravelEnvironment.release]
+     * stops it. Returns false if the resource pack sound must play instead. Music that fails after starting falls back
+     * to that sound for whoever is inside by then. A broken integration never fails the travel.
+     */
+    private fun startMusic(cab: ElevatorTransitCab): Boolean {
+        music.remove(cab)?.cancel()
+        var started: ElevatorTask? = null
+        fun unavailable(failure: Throwable): ElevatorTask? {
+            if (!musicFailureLogged) logger.log(Level.WARNING, "Elevator music falls back to the resource pack sound", failure)
+            musicFailureLogged = true
+            return null
+        }
+        started = try {
+            rideMusic.start(cab.cab) {
+                val current = started
+                if (current != null && music.remove(cab, current)) cab.cab.players().forEach { playMusic(it) }
+            }
+        } catch (failure: Exception) {
+            unavailable(failure)
+        } catch (failure: LinkageError) {
+            // An installed SneakyBackingTracks that predates its PlotMusic API.
+            unavailable(failure)
+        }
+        music[cab] = started ?: return false
+        return true
+    }
+
     private fun transfer(from: ElevatorCab, to: ElevatorCab, music: Boolean): Int {
         var moved = 0
         for (player in from.players()) {
@@ -292,7 +342,7 @@ class ElevatorsModule(private val logger: Logger, internal val plugin: Plugin = 
             if (!from.contains(player.location)) continue
             if (player.teleport(from.destination(player.location, to))) {
                 moved++
-                if (music) player.playSound(player, "lom:elevator", SoundCategory.MASTER, 1f, 1f)
+                if (music) playMusic(player)
             } else {
                 logger.warning("Elevator teleport rejected for ${player.uniqueId}")
                 player.sendMessage("Elevator transfer failed. Use /spawn if you are stuck.")
